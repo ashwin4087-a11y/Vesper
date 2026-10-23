@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+@theme {
+  --color-midnight: #0B1220;
+  --color-obsidian: #151E2D;
+  --color-slate-border: #243247;
+  --color-vesper-gold: #D5B879;
+  --color-vesper-gold-muted: rgba(213, 184, 121, 0.16);
+  --color-ivory: #F7F5F0;
+  --color-mist: #E6EAF0;
+  --color-text-primary: #F0F2F6;
+  --color-text-secondary: #A4B0C1;
+  --color-text-muted: #718096;
+  --color-status-connected: #38A169;
+  --color-status-warning: #D97706;
+  --color-status-error: #E53E3E;
+  --color-status-inactive: #64748B;
+
+  --font-display: "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+:root {
+  --vesper-midnight: #0B1220;
+  --vesper-obsidian: #151E2D;
+  --vesper-slate: #243247;
+  --vesper-gold: #D5B879;
+  --vesper-ivory: #F7F5F0;
+  --vesper-mist: #E6EAF0;
+  --vesper-text-primary: #F0F2F6;
+  --vesper-text-secondary: #A4B0C1;
+  --vesper-text-muted: #718096;
+}
+
+@layer base {
+  body {
+    background-color: var(--vesper-midnight);
+    color: var(--vesper-text-primary);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    letter-spacing: 0.01em;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
+
+/* Custom subtle scrollbars for studio panels */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B1220;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #243247;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #D5B879;
+}
+
+/* Custom range slider for brush size and pinch threshold */
+input[type="range"].vesper-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"].vesper-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: #243247;
+}
+
+input[type="range"].vesper-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  width: 14px;
+  border-radius: 50%;
+  background: #D5B879;
+  border: 2px solid #0B1220;
+  margin-top: -5px;
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+input[type="range"].vesper-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+input[type="range"].vesper-slider:focus-visible {
+  outline: none;
+}
+
+input[type="range"].vesper-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px #0B1220, 0 0 0 4px #D5B879;
+}

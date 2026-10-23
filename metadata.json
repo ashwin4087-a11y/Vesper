@@ -1,0 +1,6 @@
+{
+  "name": "VESPER — Gesture-Based Creative Studio",
+  "description": "A canvas beyond touch. A browser-based creative studio for drawing and painting on a digital canvas using real-time webcam hand gestures and computer vision.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
