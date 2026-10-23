@@ -1,103 +1,200 @@
-# VESPER — Gesture-Based Creative Studio
+<div align="center">
 
-> **A canvas beyond touch.**  
-> Your hand is the brush; your movement is the medium.
+# V E S P E R
 
-VESPER is a browser-based creative studio for drawing and painting on a digital canvas using real-time hand gestures captured through your webcam. Powered by **MediaPipe Tasks Vision (Hand Landmarker)** and an independent **HTML5 Canvas quadratic spline engine**, VESPER translates physical hand movement into expressive digital artwork with zero cloud uploads.
+### A canvas beyond touch.
 
----
+**An experimental gesture interface for making marks in space.**
 
-## Features
+<img alt="Experimental" src="https://img.shields.io/badge/EXPERIMENTAL-0B1220?style=flat-square&labelColor=0B1220&color=D5B879" />
+<img alt="React" src="https://img.shields.io/badge/REACT-151E2D?style=flat-square&logo=react&logoColor=9DB9D5" />
+<img alt="TypeScript" src="https://img.shields.io/badge/TYPESCRIPT-151E2D?style=flat-square&logo=typescript&logoColor=9DB9D5" />
+<img alt="MediaPipe" src="https://img.shields.io/badge/MEDIAPIPE-151E2D?style=flat-square&logo=google&logoColor=D5B879" />
 
-- **Real-Time 21-Point Hand Tracking**: Uses MediaPipe Hand Landmarker in `VIDEO` mode (`requestAnimationFrame`) with GPU acceleration and automatic CPU fallback.
-- **Dedicated Gesture Recognition Engine**:
-  - **Draw Gesture**: Raise your **index finger** (Landmark `8`) with middle, ring, and pinky fingers folded to paint continuous smooth strokes.
-  - **Pause / Hover Gesture**: Open your palm or lower your index finger to lift the brush cleanly while maintaining a live spatial reticle on the canvas.
-  - **Pinch Gesture**: Bring your **thumb tip** (`4`) and **index fingertip** (`8`) together within a configurable threshold to cycle through the studio pigment palette without ever erasing your canvas.
-- **Independent HTML5 Vector Spline Engine**:
-  - Quadratic midpoint curve interpolation (`quadraticCurveTo`) with adaptive velocity-aware exponential smoothing.
-  - High-DPI (`window.devicePixelRatio`) Retina canvas rendering.
-  - Structured stroke history (`Stroke[]`) supporting lossless **Undo**, **Redo**, proportional **Window Resizing**, and **PNG Export** composited onto a warm Ivory (`#F7F5F0`) paper surface.
-  - Dedicated **Eraser** (`destination-out` compositing) that removes only affected artwork while preserving the warm ivory canvas.
-- **Full Mouse & Trackpad Fallback**: Draw seamlessly with a mouse, stylus, or trackpad at any time—even without a webcam.
-- **Privacy-First Camera Lifecycle**: Never requests camera permissions automatically. Stopping the camera or exiting the studio immediately releases all media tracks and disposes tracking resources.
+<img width="100%" alt="VESPER — gesture driven canvas" src="https://capsule-render.vercel.app/api?type=rect&color=0B1220&height=210&section=header&text=VESPER&fontColor=F0F2F6&fontSize=64&fontAlignY=44&desc=A%20canvas%20beyond%20touch.&descAlignY=72&descSize=16&animation=fadeIn" />
+
+<sub>GESTURE / PERCEPTION / MARK</sub>
+
+</div>
 
 ---
 
-## Design System
+<div align="center">
 
-| Token | Hex | Usage |
-| :--- | :--- | :--- |
-| **Midnight** | `#0B1220` | Main application background |
-| **Obsidian Blue** | `#151E2D` | Panels, sidebars, elevated surfaces |
-| **Slate** | `#243247` | Hairline borders, dividers, secondary controls |
-| **Vesper Gold** | `#D5B879` | Primary brand accent, active tools, key actions |
-| **Ivory** | `#F7F5F0` | Main drawing canvas |
-| **Mist** | `#E6EAF0` | Light surfaces, subtle canvas elements |
-| **Primary Text** | `#F0F2F6` | Main text on dark surfaces |
-| **Secondary Text** | `#A4B0C1` | Supporting text |
-| **Muted Text** | `#718096` | Labels and metadata |
+### 01 — INTERACTION STUDY
 
-- **Typography**: `Bricolage Grotesque` (600, 700, 800) for display headings and branding; `Inter` (400, 500, 600) for studio controls; `JetBrains Mono` for tabular numeric readouts.
+# The hand becomes the instrument.
+
+VESPER explores a simple idea: **what if a canvas responded to movement, not touch?**
+
+A webcam observes the hand. A landmark model estimates its position. Gesture logic translates motion into intent. The canvas turns that intent into a stroke.
+
+No stylus. No special hardware. Just movement, interpreted in real time.
+
+</div>
 
 ---
 
-## Project Architecture
+## 02 — SYSTEM
 
 ```text
-src/
-├── components/
-│   ├── layout/       TopBar.tsx, Sidebar.tsx, StatusBar.tsx
-│   ├── canvas/       DrawingCanvas.tsx, CanvasToolbar.tsx, ColorPalette.tsx, BrushSettings.tsx
-│   ├── camera/       CameraPreview.tsx, CameraControls.tsx, TrackingStatus.tsx
-│   ├── onboarding/   WelcomeScreen.tsx, GestureGuide.tsx
-│   └── ui/           Button.tsx, Tooltip.tsx, Dialog.tsx
-├── hooks/            useCamera.ts, useHandTracking.ts, useDrawing.ts
-├── lib/              handTracking.ts, gestureRecognition.ts, drawingEngine.ts,
-│                     canvasUtils.ts, coordinateMapping.ts
-├── types/            hand.ts, drawing.ts
-├── styles/           globals.css
-├── App.tsx
-└── main.tsx
+CAMERA INPUT
+    ↓
+HAND LANDMARKS
+    ↓
+GESTURE INTERPRETATION
+    ↓
+DRAWING STATE
+    ↓
+CANVAS / STROKE ENGINE
+    ↓
+ARTWORK
 ```
+
+| Layer | Responsibility |
+|:--|:--|
+| **Perception** | Read webcam frames and estimate hand landmarks |
+| **Interpretation** | Recognize drawing, pause, pinch, and tool intent |
+| **Rendering** | Convert hand movement into smooth canvas strokes |
+| **Workspace** | Expose tools, tracking feedback, and canvas controls |
+
+The tracking pipeline and drawing engine are intentionally independent. A gesture should describe **what to do**, not how pixels are rendered.
 
 ---
 
-## Getting Started
+## 03 — INTENDED CAPABILITIES
 
-### Prerequisites
+<details>
+<summary><strong>01 / Spatial drawing</strong> · <code>TRACKING</code></summary>
 
-- **Node.js** v18 or higher
-- **npm** or **pnpm**
-- A webcam (optional; mouse drawing works out of the box)
-- A modern browser with WebGL / WebAssembly support
+Use the index fingertip as a pointer. Map its position into canvas coordinates and interpolate movement into continuous strokes.
 
-### Installation
+</details>
 
-```bash
-npm install
-npm run dev
-```
+<details>
+<summary><strong>02 / Gesture vocabulary</strong> · <code>INTERACTION</code></summary>
 
-Open `http://localhost:3000` in your browser.
+Recognize intentional drawing and pause states, pinch interactions, and eraser behavior. Use stable transitions rather than reacting to isolated frames.
+
+</details>
+
+<details>
+<summary><strong>03 / Instrument panel</strong> · <code>TOOLS</code></summary>
+
+Choose color and brush size. Erase, undo, redo, clear the canvas, and export artwork.
+
+</details>
+
+<details>
+<summary><strong>04 / Perception feedback</strong> · <code>CAMERA</code></summary>
+
+Show a mirrored camera preview, tracking status, and optional landmark overlay. Provide camera start, stop, and permission recovery.
+
+</details>
+
+<details>
+<summary><strong>05 / Direct manipulation fallback</strong> · <code>ACCESSIBILITY</code></summary>
+
+Keep mouse drawing available so the canvas remains usable without camera access.
+
+</details>
+
+> **Development note:** VESPER is currently an early-stage project. These describe intended capabilities, not a claim that all features are implemented.
 
 ---
 
-## Usage & Keyboard Shortcuts
+## 04 — VISUAL LANGUAGE
 
-1. Click **Enter Studio** from the welcome screen.
-2. Click **Enable Camera** in the right-hand panel to grant webcam access.
-3. Hold your hand in front of the camera and **raise your index finger** (other fingers folded) to draw.
-4. **Open your palm** or lower your index finger to pause between strokes.
-5. Click **Save Artwork** in the top bar to export a high-resolution PNG.
+A restrained, nocturnal workspace. The interface stays quiet so the artwork and movement remain the focus.
 
-| Shortcut | Action |
-| :--- | :--- |
-| `B` | Select Brush tool |
-| `E` | Select Eraser tool |
-| `[` / `]` | Decrease / Increase brush or eraser size |
-| `1` – `8` | Select pigment from the 8-color VESPER palette |
-| `L` | Toggle 21-point hand landmark skeleton overlay |
-| `Ctrl+Z` / `⌘Z` | Undo last stroke |
-| `Ctrl+Y` / `⇧⌘Z` | Redo stroke |
-| `?` | Open Studio Gesture Guide |
+<table>
+<tr>
+<td width="50%">
+
+**MIDNIGHT**<br />
+`#0B1220`<br />
+<sub>Main environment</sub>
+
+</td>
+<td width="50%">
+
+**OBSIDIAN**<br />
+`#151E2D`<br />
+<sub>Panels and instruments</sub>
+
+</td>
+</tr>
+<tr>
+<td>
+
+**SLATE**<br />
+`#243247`<br />
+<sub>Edges and divisions</sub>
+
+</td>
+<td>
+
+**VESPER GOLD**<br />
+`#D5B879`<br />
+<sub>Active states, sparingly</sub>
+
+</td>
+</tr>
+<tr>
+<td>
+
+**IVORY**<br />
+`#F7F5F0`<br />
+<sub>Canvas surface</sub>
+
+</td>
+<td>
+
+**MIST**<br />
+`#E6EAF0`<br />
+<sub>Light interface surfaces</sub>
+
+</td>
+</tr>
+</table>
+
+**Typography** — Bricolage Grotesque for the wordmark and display moments. Inter for interface labels, controls, and supporting text.
+
+**Design principles** — generous negative space · quiet hierarchy · precise controls · warm canvas · minimal ornament
+
+---
+
+## 05 — TECHNOLOGY
+
+| Component | Planned implementation |
+|:--|:--|
+| Application | React + TypeScript + Vite |
+| Hand perception | MediaPipe Tasks Vision — Hand Landmarker |
+| Drawing | HTML Canvas 2D |
+| Styling | Tailwind CSS |
+| Icons | Lucide React |
+| Motion | Framer Motion |
+
+---
+
+## 06 — BUILD SEQUENCE
+
+- [ ] Scaffold the application and design tokens
+- [ ] Camera lifecycle, permission, and recovery
+- [ ] Hand landmark inference
+- [ ] Gesture state machine
+- [ ] Canvas engine and stroke interpolation
+- [ ] Tool controls and drawing history
+- [ ] PNG export
+- [ ] Responsive workspace and accessibility
+- [ ] Tests, setup guide, and implementation notes
+
+---
+
+<div align="center">
+
+### VESPER
+
+<sub>THE SPACE BETWEEN INTENTION AND A LINE.</sub>
+
+</div>
