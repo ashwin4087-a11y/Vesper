@@ -14,22 +14,23 @@ export function useDrawing() {
   const [settings, setSettings] = useState<DrawingSettings>({
     tool: ToolType.BRUSH,
     color: VESPER_PALETTE[1].hex, // Midnight Blue (#0B1220) default ink
-    brushSize: 8,
+    brushSize: 3,
     eraserSize: 28,
     opacity: 1,
-    smoothing: 0.55,
+    smoothing: 0.45,
     pinchThreshold: 0.048,
     showLandmarks: true,
     enablePinchColorCycle: true,
     enableGestureEraser: true,
-    activePresetId: 'studio-brush',
-    background: CANVAS_BACKGROUNDS[0], // Warm Ivory Paper
+    activePresetId: 'fine-ink',
+    background: CANVAS_BACKGROUNDS[0], // Warm Ivory
   });
 
   const [artworkTitle, setArtworkTitle] = useState<string>('Untitled Study 01');
   const [canUndo, setCanUndo] = useState<boolean>(false);
   const [canRedo, setCanRedo] = useState<boolean>(false);
   const [strokeCount, setStrokeCount] = useState<number>(0);
+  const [isDirty, setIsDirty] = useState<boolean>(false);
 
   const engineRef = useRef<DrawingEngine | null>(null);
   if (!engineRef.current) {
@@ -38,6 +39,11 @@ export function useDrawing() {
         setCanUndo(u);
         setCanRedo(r);
         setStrokeCount(count);
+        if (count > 0) {
+          setIsDirty(true);
+        } else {
+          setIsDirty(false);
+        }
       },
     });
   }
@@ -138,14 +144,18 @@ export function useDrawing() {
 
   const clearCanvas = useCallback(() => {
     engineRef.current?.clear();
+    setIsDirty(false);
   }, []);
 
   const exportArtwork = useCallback(
     (exportSettings: ExportSettings) => {
-      return (
+      const ok =
         engineRef.current?.exportPNG(exportSettings, settings.background) ??
-        false
-      );
+        false;
+      if (ok) {
+        setIsDirty(false);
+      }
+      return ok;
     },
     [settings.background]
   );
@@ -164,6 +174,8 @@ export function useDrawing() {
     canUndo,
     canRedo,
     strokeCount,
+    isDirty,
+    setIsDirty,
     setTool,
     setColor,
     applyPreset,

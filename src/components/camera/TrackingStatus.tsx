@@ -38,12 +38,19 @@ export const TrackingStatus: React.FC<TrackingStatusProps> = ({
   const confidencePct = hasHand ? Math.round(confidence * 100) : 0;
 
   let gestureLabel = 'Idle';
-  if (isErasing || gesture === GestureType.ERASE) gestureLabel = 'V-Sign Eraser';
-  else if (isDrawing || gesture === GestureType.DRAW) gestureLabel = 'Drawing (Index Raised)';
-  else if (gesture === GestureType.PINCH) gestureLabel = 'Pinch (Selection)';
-  else if (gesture === GestureType.OPEN_PALM) gestureLabel = 'Paused (Open Palm)';
-  else if (gesture === GestureType.CLUTCH) gestureLabel = 'Clutched (Fist)';
-  else if (hasHand) gestureLabel = 'Hover (Cursor Active)';
+  if (trackingStatus.isPaused || gesture === GestureType.OPEN_PALM || gesture === GestureType.PAUSE) {
+    gestureLabel = 'Paused (Open Palm)';
+  } else if (isErasing || gesture === GestureType.ERASE) {
+    gestureLabel = 'V-Sign Eraser';
+  } else if (isDrawing || gesture === GestureType.DRAW) {
+    gestureLabel = 'Drawing (Index Raised)';
+  } else if (gesture === GestureType.PINCH) {
+    gestureLabel = 'Pinch (Selection)';
+  } else if (gesture === GestureType.CLUTCH) {
+    gestureLabel = 'Clutched (Fist)';
+  } else if (hasHand) {
+    gestureLabel = 'Hover (Cursor Active)';
+  }
 
   return (
     <div className="space-y-3 text-xs">

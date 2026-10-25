@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Check, Download, Layers, Sparkles } from 'lucide-react';
-import { CanvasBackground, ExportSettings } from '../../types/drawing';
+import { Check, Download, Layers } from 'lucide-react';
+import { CANVAS_BACKGROUNDS, CanvasBackground, ExportSettings } from '../../types/drawing';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
 
@@ -13,6 +13,21 @@ export interface ExportDialogProps {
   onExport: (settings: ExportSettings) => void;
 }
 
+interface ExportBgChoice {
+  id: string;
+  name: string;
+  isTransparent: boolean;
+  hex: string;
+}
+
+const EXPORT_BG_CHOICES: ExportBgChoice[] = [
+  { id: 'transparent', name: 'Transparent', isTransparent: true, hex: 'transparent' },
+  { id: 'warm-ivory', name: 'Warm Ivory', isTransparent: false, hex: '#F7F5F0' },
+  { id: 'pure-white', name: 'Pure White', isTransparent: false, hex: '#FFFFFF' },
+  { id: 'midnight-studio', name: 'Midnight Studio', isTransparent: false, hex: '#0B1220' },
+  { id: 'studio-grid', name: 'Studio Grid', isTransparent: false, hex: '#F7F5F0' },
+];
+
 export const ExportDialog: React.FC<ExportDialogProps> = ({
   open,
   artworkTitle,
@@ -22,13 +37,15 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
   onExport,
 }) => {
   const [title, setTitle] = useState(artworkTitle);
-  const [transparentBackground, setTransparentBackground] = useState(false);
+  const [selectedBgId, setSelectedBgId] = useState<string>(background.id);
   const [scale, setScale] = useState<1 | 2>(2);
 
   const handleConfirm = () => {
+    const isTransparent = selectedBgId === 'transparent';
     onExport({
       title: title.trim() || 'vesper-artwork',
-      transparentBackground,
+      transparentBackground: isTransparent,
+      backgroundId: isTransparent ? undefined : selectedBgId,
       scale,
     });
     onClose();
@@ -56,6 +73,47 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
             className="w-full rounded-lg bg-[#0B1220] border border-[#243247] px-3 py-2 text-xs text-[#F0F2F6] focus:outline-none focus:border-[#D5B879]"
             placeholder="vesper-artwork"
           />
+        </div>
+
+        {/* Background Options */}
+        <div className="space-y-2 rounded-lg bg-[#0B1220] border border-[#243247] p-3.5">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-[#F0F2F6]">Background Surface</span>
+            <span className="text-[11px] text-[#A4B0C1]">
+              {EXPORT_BG_CHOICES.find((b) => b.id === selectedBgId)?.name}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1">
+            {EXPORT_BG_CHOICES.map((choice) => {
+              const isSelected = selectedBgId === choice.id;
+              return (
+                <button
+                  key={choice.id}
+                  type="button"
+                  onClick={() => setSelectedBgId(choice.id)}
+                  className={`py-2 px-2 rounded-md text-[11px] font-medium border text-left flex items-center justify-between transition-colors cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#151E2D] border-[#D5B879] text-[#D5B879]'
+                      : 'border-[#243247] text-[#A4B0C1] hover:text-[#F0F2F6]'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 truncate">
+                    {choice.isTransparent ? (
+                      <span className="w-3 h-3 rounded-full border border-[#718096] bg-[repeating-conic-gradient(#243247_0%_25%,transparent_0%_50%)] bg-[length:6px_6px] shrink-0" />
+                    ) : (
+                      <span
+                        className="w-3 h-3 rounded-full border border-[#243247] shrink-0"
+                        style={{ backgroundColor: choice.hex }}
+                      />
+                    )}
+                    <span className="truncate">{choice.name}</span>
+                  </div>
+                  {isSelected && <Check className="w-3 h-3 shrink-0 ml-1 text-[#D5B879]" />}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Resolution Quality */}
@@ -90,44 +148,6 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
               2× High-DPI Print Ready
             </button>
           </div>
-        </div>
-
-        {/* Background Option */}
-        <div className="space-y-2 rounded-lg bg-[#0B1220] border border-[#243247] p-3.5">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-semibold text-[#F0F2F6]">
-                Transparent Background
-              </div>
-              <div className="text-[#A4B0C1] mt-0.5">
-                Export vector-smooth ink strokes only without paper color
-              </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={transparentBackground}
-              onClick={() => setTransparentBackground((prev) => !prev)}
-              className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer ${
-                transparentBackground ? 'bg-[#D5B879]' : 'bg-[#243247]'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-[#0B1220] transition-transform ${
-                  transparentBackground ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-          {!transparentBackground && (
-            <div className="flex items-center gap-2 pt-1 text-[11px] text-[#A4B0C1]">
-              <span
-                className="w-3 h-3 rounded-full border border-[#243247]"
-                style={{ backgroundColor: background.hex }}
-              />
-              <span>Includes active paper surface: {background.name}</span>
-            </div>
-          )}
         </div>
 
         {/* Summary */}

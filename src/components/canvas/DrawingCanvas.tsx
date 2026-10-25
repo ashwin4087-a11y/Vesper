@@ -269,11 +269,19 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 setHoveredTargetUI({ id: null, progress: 0 });
               }
 
-              const isGestureErasing = frame.gestureResult.isErasing;
-              const isGestureDrawing = frame.gestureResult.isDrawing && !isGestureErasing;
+              const isGesturePaused = frame.gestureResult.isPaused;
+              const isGestureErasing = frame.gestureResult.isErasing && !isGesturePaused;
+              const isGestureDrawing = frame.gestureResult.isDrawing && !isGestureErasing && !isGesturePaused;
 
               if (!isPointerDrawingRef.current) {
-                if (isGestureErasing) {
+                if (isGesturePaused) {
+                  // Palm Pause active: terminate current stroke immediately
+                  if (isGestureDrawingRef.current || isGestureErasingRef.current) {
+                    isGestureDrawingRef.current = false;
+                    isGestureErasingRef.current = false;
+                    engine.endStroke();
+                  }
+                } else if (isGestureErasing) {
                   // V-sign Eraser active
                   if (!isGestureErasingRef.current) {
                     if (isGestureDrawingRef.current) {
@@ -287,6 +295,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                       opacity: 1,
                       smoothing: currentSettings.smoothing,
                       tool: ToolType.ERASER,
+                      presetId: 'eraser',
                     });
                   } else {
                     engine.addPointToStroke(smoothed);
@@ -305,6 +314,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                       opacity: currentSettings.opacity,
                       smoothing: currentSettings.smoothing,
                       tool: currentSettings.tool,
+                      presetId: currentSettings.activePresetId,
                     });
                   } else {
                     engine.addPointToStroke(smoothed);
@@ -334,6 +344,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 ? GestureType.HOVER
                 : frame.gestureResult.gesture,
               isGestureErasing: frame.gestureResult.isErasing,
+              isPaused: frame.gestureResult.isPaused,
             });
           } else {
             // Hand out of frame
@@ -399,6 +410,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         opacity: settings.opacity,
         smoothing: settings.smoothing,
         tool: settings.tool,
+        presetId: settings.activePresetId,
       });
     },
     [engineRef, settings, activeSize]

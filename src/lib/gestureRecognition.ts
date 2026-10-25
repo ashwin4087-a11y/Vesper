@@ -74,6 +74,7 @@ export function createEmptyGestureResult(): GestureResult {
     isDrawing: false,
     isErasing: false,
     isPinching: false,
+    isPaused: false,
     pinchDistance: 1,
     indexTipMirrored: null,
     thumbTipMirrored: null,

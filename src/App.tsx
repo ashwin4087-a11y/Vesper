@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Check } from 'lucide-react';
+import { AlertTriangle, Check, Download, LogOut } from 'lucide-react';
 import { CanvasToolbar } from './components/canvas/CanvasToolbar';
 import { DrawingCanvas } from './components/canvas/DrawingCanvas';
 import { Sidebar } from './components/layout/Sidebar';
@@ -13,7 +13,8 @@ import { ExportDialog } from './components/ui/ExportDialog';
 import { useCamera } from './hooks/useCamera';
 import { useDrawing } from './hooks/useDrawing';
 import { useHandTracking } from './hooks/useHandTracking';
-import { ExportSettings, ToolType, VESPER_PALETTE } from './types/drawing';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { ExportSettings, ToolType } from './types/drawing';
 import { CameraState } from './types/hand';
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
   const [settingsDialogOpen, setSettingsDialogOpen] = useState<boolean>(false);
   const [guideDialogOpen, setGuideDialogOpen] = useState<boolean>(false);
   const [exportDialogOpen, setExportDialogOpen] = useState<boolean>(false);
+  const [confirmExitDialogOpen, setConfirmExitDialogOpen] = useState<boolean>(false);
   const [exportSuccessNotice, setExportSuccessNotice] = useState<string | null>(null);
 
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -45,6 +47,7 @@ export default function App() {
     canUndo,
     canRedo,
     strokeCount,
+    isDirty,
     setTool,
     setColor,
     applyPreset,
@@ -83,17 +86,17 @@ export default function App() {
     }
   }, []);
 
-  // Protect unsaved artwork on tab close
+  // Unsaved artwork protection: prompt before tab close if artwork is modified
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (strokeCount > 0) {
+      if (isDirty && strokeCount > 0) {
         e.preventDefault();
         e.returnValue = '';
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [strokeCount]);
+  }, [isDirty, strokeCount]);
 
   const handleEnterStudio = useCallback(
     (autoStartCamera: boolean = false) => {
@@ -105,12 +108,21 @@ export default function App() {
     [startCamera]
   );
 
-  // When exiting studio: stop video stream, release tracks, reset tracking, keep artwork
-  const handleExitStudio = useCallback(() => {
+  const confirmExitStudio = useCallback(() => {
     stopCamera();
     disposeTracking();
+    setConfirmExitDialogOpen(false);
     setInStudio(false);
   }, [stopCamera, disposeTracking]);
+
+  // When exiting studio: verify if unsaved artwork exists before navigating
+  const handleExitStudio = useCallback(() => {
+    if (isDirty && strokeCount > 0) {
+      setConfirmExitDialogOpen(true);
+    } else {
+      confirmExitStudio();
+    }
+  }, [isDirty, strokeCount, confirmExitStudio]);
 
   const handleExportConfirm = useCallback(
     (exportSettings: ExportSettings) => {
@@ -127,89 +139,38 @@ export default function App() {
     [exportArtwork, settings.background]
   );
 
-  // Studio Keyboard Shortcuts
-  useEffect(() => {
-    if (!inStudio) return;
+  const handleToggleCamera = useCallback(() => {
+    if (cameraState === CameraState.ACTIVE) {
+      stopCamera();
+    } else {
+      startCamera();
+    }
+  }, [cameraState, startCamera, stopCamera]);
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
+  const handleCloseAllDialogs = useCallback(() => {
+    setClearDialogOpen(false);
+    setSettingsDialogOpen(false);
+    setGuideDialogOpen(false);
+    setExportDialogOpen(false);
+    setConfirmExitDialogOpen(false);
+  }, []);
 
-      // Undo / Redo
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) {
-          redo();
-        } else {
-          undo();
-        }
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
-        e.preventDefault();
-        redo();
-        return;
-      }
-
-      // Export hotkey
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        setExportDialogOpen(true);
-        return;
-      }
-
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-
-      const key = e.key.toLowerCase();
-      if (key === 'b') {
-        setTool(ToolType.BRUSH);
-      } else if (key === 'e') {
-        setTool(ToolType.ERASER);
-      } else if (key === 'l') {
-        toggleShowLandmarks();
-      } else if (e.key === '[') {
-        setBrushSize(activeSize - 3);
-      } else if (e.key === ']') {
-        setBrushSize(activeSize + 3);
-      } else if (e.key === '?') {
-        setGuideDialogOpen((prev) => !prev);
-      } else if (e.code === 'Space') {
-        e.preventDefault();
-        if (cameraState === CameraState.ACTIVE) {
-          stopCamera();
-        } else {
-          startCamera();
-        }
-      } else if (/^[1-8]$/.test(e.key)) {
-        const idx = Number(e.key) - 1;
-        if (VESPER_PALETTE[idx]) {
-          setColor(VESPER_PALETTE[idx].hex);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    inStudio,
+  // Dedicated Keyboard Shortcuts Hook (B, E, [, ], Ctrl+Z, Ctrl+Shift+Z, Space, Esc, 1-8, ?)
+  useKeyboardShortcuts({
+    enabled: inStudio,
     activeSize,
     cameraState,
-    undo,
-    redo,
-    setTool,
-    setColor,
-    setBrushSize,
-    toggleShowLandmarks,
-    startCamera,
-    stopCamera,
-  ]);
+    onSelectTool: setTool,
+    onSelectColor: setColor,
+    onChangeSize: setBrushSize,
+    onUndo: undo,
+    onRedo: redo,
+    onToggleCamera: handleToggleCamera,
+    onOpenExportDialog: () => setExportDialogOpen(true),
+    onToggleGuide: () => setGuideDialogOpen((prev) => !prev),
+    onToggleLandmarks: toggleShowLandmarks,
+    onEscape: handleCloseAllDialogs,
+  });
 
   if (!inStudio) {
     return <WelcomeScreen onEnterStudio={handleEnterStudio} />;
@@ -350,6 +311,54 @@ export default function App() {
               }}
             >
               Clear Canvas
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Unsaved Work Exit Protection Dialog */}
+      <Dialog
+        open={confirmExitDialogOpen}
+        onClose={() => setConfirmExitDialogOpen(false)}
+        title="Unsaved Artwork in Progress"
+        description="You have created strokes that haven't been exported yet. Exiting to the welcome screen will release your session."
+      >
+        <div className="mt-4 flex flex-col gap-4">
+          <div className="flex items-start gap-3 rounded-lg bg-[#0B1220] border border-[#D5B879]/40 p-3.5 text-xs text-[#A4B0C1]">
+            <AlertTriangle className="w-4 h-4 text-[#D5B879] shrink-0 mt-0.5" />
+            <span>
+              Your artwork <strong className="text-[#F0F2F6]">"{artworkTitle}"</strong> contains{' '}
+              <strong className="text-[#F0F2F6] font-mono tabular-nums">{strokeCount}</strong> unsaved stroke{strokeCount === 1 ? '' : 's'}.
+            </span>
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-2">
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => setConfirmExitDialogOpen(false)}
+            >
+              Keep Drawing
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => {
+                setConfirmExitDialogOpen(false);
+                setExportDialogOpen(true);
+              }}
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export First</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={confirmExitStudio}
+              className="text-[#E53E3E] hover:text-[#E53E3E] hover:bg-[#E53E3E]/10"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Exit Anyway</span>
             </Button>
           </div>
         </div>

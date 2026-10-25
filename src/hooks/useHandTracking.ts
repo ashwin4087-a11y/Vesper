@@ -25,6 +25,7 @@ export interface TrackingStatusSummary {
   isDrawing: boolean;
   isErasing: boolean;
   isPinching: boolean;
+  isPaused: boolean;
 }
 
 export interface UseHandTrackingOptions {
@@ -92,6 +93,7 @@ export function useHandTracking({
     isDrawing: false,
     isErasing: false,
     isPinching: false,
+    isPaused: false,
   });
 
   const ensureModelLoaded = useCallback(async (): Promise<boolean> => {
@@ -160,6 +162,7 @@ export function useHandTracking({
       isDrawing: false,
       isErasing: false,
       isPinching: false,
+      isPaused: false,
     }));
   }, [overlayCanvasRef]);
 
@@ -182,6 +185,7 @@ export function useHandTracking({
       isDrawing: false,
       isErasing: false,
       isPinching: false,
+      isPaused: false,
     });
   }, [stopTrackingLoop]);
 
@@ -249,7 +253,8 @@ export function useHandTracking({
                 prev.state !== frame.gestureResult.state ||
                 prev.isDrawing !== frame.gestureResult.isDrawing ||
                 prev.isErasing !== frame.gestureResult.isErasing ||
-                prev.isPinching !== frame.gestureResult.isPinching;
+                prev.isPinching !== frame.gestureResult.isPinching ||
+                prev.isPaused !== frame.gestureResult.isPaused;
 
               if (!discreteChanged && now - lastUiSyncRef.current < 120) {
                 return prev;
@@ -268,6 +273,7 @@ export function useHandTracking({
                 isDrawing: frame.gestureResult.isDrawing,
                 isErasing: frame.gestureResult.isErasing,
                 isPinching: frame.gestureResult.isPinching,
+                isPaused: frame.gestureResult.isPaused,
               };
             });
           } catch (err) {

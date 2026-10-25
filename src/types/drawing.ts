@@ -18,6 +18,7 @@ export interface Stroke {
   opacity: number;
   smoothing: number;
   tool: ToolType;
+  presetId?: string;
   timestamp: number;
 }
 
@@ -53,18 +54,9 @@ export interface BrushPreset {
 
 export const BRUSH_PRESETS: BrushPreset[] = [
   {
-    id: 'studio-brush',
-    name: 'Studio Brush',
-    description: 'Balanced organic ink with subtle velocity taper',
-    size: 8,
-    opacity: 1,
-    smoothing: 0.55,
-    tool: ToolType.BRUSH,
-  },
-  {
-    id: 'fine-liner',
-    name: 'Fine Liner',
-    description: 'Crisp, high-precision technical contouring',
+    id: 'fine-ink',
+    name: 'Fine Ink',
+    description: 'Crisp technical contouring with velocity taper',
     size: 3,
     opacity: 1,
     smoothing: 0.45,
@@ -73,25 +65,34 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   {
     id: 'calligraphy',
     name: 'Calligraphy',
-    description: 'Expressive stroke dynamic with broad caliber',
-    size: 16,
+    description: 'Broad-edge dynamic nib with directional caliber variation',
+    size: 14,
     opacity: 0.95,
     smoothing: 0.65,
+    tool: ToolType.BRUSH,
+  },
+  {
+    id: 'chisel-marker',
+    name: 'Chisel Marker',
+    description: 'Architectural flat angled ribbon footprint with bold coverage',
+    size: 22,
+    opacity: 0.82,
+    smoothing: 0.5,
     tool: ToolType.BRUSH,
   },
   {
     id: 'soft-graphite',
     name: 'Soft Graphite',
     description: 'Velvety translucent pigment for shading & washes',
-    size: 24,
-    opacity: 0.45,
+    size: 18,
+    opacity: 0.42,
     smoothing: 0.7,
     tool: ToolType.BRUSH,
   },
   {
     id: 'eraser',
-    name: 'Precision Eraser',
-    description: 'Clean sub-pixel stroke subtractor',
+    name: 'Eraser',
+    description: 'Clean sub-pixel subtractive eraser',
     size: 28,
     opacity: 1,
     smoothing: 0.4,
@@ -110,28 +111,28 @@ export interface CanvasBackground {
 export const CANVAS_BACKGROUNDS: CanvasBackground[] = [
   {
     id: 'warm-ivory',
-    name: 'Warm Ivory Paper',
+    name: 'Warm Ivory',
     hex: '#F7F5F0',
     textColor: '#0B1220',
     grid: false,
   },
   {
     id: 'studio-grid',
-    name: 'Ivory Drafting Grid',
+    name: 'Studio Grid',
     hex: '#F7F5F0',
     textColor: '#0B1220',
     grid: true,
   },
   {
     id: 'pure-white',
-    name: 'Pure White Paper',
+    name: 'Pure White',
     hex: '#FFFFFF',
     textColor: '#0B1220',
     grid: false,
   },
   {
-    id: 'obsidian-studio',
-    name: 'Obsidian Studio',
+    id: 'midnight-studio',
+    name: 'Midnight Studio',
     hex: '#0B1220',
     textColor: '#F0F2F6',
     grid: false,
@@ -156,5 +157,6 @@ export interface DrawingSettings {
 export interface ExportSettings {
   title: string;
   transparentBackground: boolean;
+  backgroundId?: string;
   scale: 1 | 2;
 }

@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { TrackingStatusSummary } from '../../hooks/useHandTracking';
 import { ToolType, VESPER_PALETTE } from '../../types/drawing';
-import { CameraState, GestureType } from '../../types/hand';
+import { CameraState, GestureState, GestureType } from '../../types/hand';
 
 export interface StatusBarProps {
   cameraState: CameraState;
@@ -40,16 +40,21 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
   let postureText = 'Standby';
   if (isCameraActive) {
-    if (!trackingStatus.hasHand) {
+    if (!trackingStatus.hasHand || trackingStatus.state === GestureState.TRACKING_LOST) {
       postureText = 'Searching for hand…';
+    } else if (
+      trackingStatus.isPaused ||
+      trackingStatus.state === GestureState.PAUSED ||
+      trackingStatus.gesture === GestureType.OPEN_PALM ||
+      trackingStatus.gesture === GestureType.PAUSE
+    ) {
+      postureText = 'Paused (Open Palm)';
     } else if (trackingStatus.isErasing || trackingStatus.gesture === GestureType.ERASE) {
       postureText = 'V-Sign Eraser Active';
     } else if (trackingStatus.isDrawing || trackingStatus.gesture === GestureType.DRAW) {
       postureText = 'Drawing (Continuous Ink)';
     } else if (trackingStatus.isPinching || trackingStatus.gesture === GestureType.PINCH) {
       postureText = 'Pinching (Selection)';
-    } else if (trackingStatus.gesture === GestureType.OPEN_PALM) {
-      postureText = 'Paused (Open Palm)';
     } else {
       postureText = 'Spatial Hover';
     }

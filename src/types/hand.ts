@@ -47,9 +47,11 @@ export enum GestureState {
   DRAWING = 'DRAWING',
   ERASE_PENDING = 'ERASE_PENDING',
   ERASING = 'ERASING',
+  PAUSED = 'PAUSED',
   PINCH_PENDING = 'PINCH_PENDING',
   PINCH_ACTIVE = 'PINCH_ACTIVE',
   TRACKING_LOST_GRACE = 'TRACKING_LOST_GRACE',
+  TRACKING_LOST = 'TRACKING_LOST',
 }
 
 export enum CameraState {
@@ -73,6 +75,7 @@ export interface GestureResult {
   isDrawing: boolean;
   isErasing: boolean;
   isPinching: boolean;
+  isPaused: boolean;
   pinchDistance: number;
   indexTipMirrored: { x: number; y: number } | null;
   thumbTipMirrored: { x: number; y: number } | null;

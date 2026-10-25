@@ -1,4 +1,5 @@
 import React from 'react';
+import { Camera, CheckCircle2, Eye, Hand, Sparkles } from 'lucide-react';
 import { GestureType } from '../../types/hand';
 
 export interface GestureGuideProps {
@@ -14,38 +15,48 @@ export const GestureGuide: React.FC<GestureGuideProps> = ({
     {
       type: GestureType.DRAW,
       title: 'Draw Stroke',
-      posture: 'Index extended · others folded',
-      detail: 'Directs continuous ink strokes from your index fingertip onto the canvas.',
+      posture: 'Index extended · other fingers folded',
+      detail: 'Depicts continuous ink strokes from your index fingertip onto the canvas.',
+      badgeColor: '#D5B879',
+    },
+    {
+      type: GestureType.OPEN_PALM,
+      title: 'Pause / Rest',
+      posture: 'Open Palm (all 5 fingers spread)',
+      detail: 'Instantly pauses ink flow. Lift and reposition your hand without leaving a mark.',
+      badgeColor: '#38A169',
     },
     {
       type: GestureType.ERASE,
       title: 'V-Sign Eraser',
-      posture: 'Index + Middle extended (Peace)',
-      detail: 'Instantly activates the subtractive eraser without clicking any buttons.',
-    },
-    {
-      type: GestureType.HOVER,
-      title: 'Hover / Move',
-      posture: 'Open palm or relaxed hand',
-      detail: 'Lifts the brush cleanly while tracking the cursor reticle across the canvas.',
+      posture: 'Index + Middle extended (Peace sign)',
+      detail: 'Activates the subtractive eraser without clicking any buttons or switching tools.',
+      badgeColor: '#F87171',
     },
     {
       type: GestureType.PINCH,
       title: 'Pinch & Select',
       posture: 'Thumb + Index fingertips touching',
-      detail:
-        'Move cursor to the top dock and pinch or hold to select colors and instruments.',
+      detail: 'Pinch or hover over the top dock to switch instruments and pigments instantly.',
+      badgeColor: '#D5B879',
+    },
+    {
+      type: GestureType.HOVER,
+      title: 'Spatial Hover',
+      posture: 'Gentle relaxed hand movement',
+      detail: 'Aims the circular targeting reticle across the canvas without depositing pigment.',
+      badgeColor: '#A4B0C1',
     },
   ];
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-[#A4B0C1]">
-          Gesture Vocabulary
+        <span className="text-xs font-semibold text-[#F0F2F6]">
+          Spatial Gesture Vocabulary
         </span>
-        <span className="text-[11px] text-[#718096] tabular-nums">
-          Spatial Computer Vision
+        <span className="text-[11px] font-mono text-[#D5B879] tabular-nums">
+          Optical Computer Vision
         </span>
       </div>
 
@@ -53,30 +64,33 @@ export const GestureGuide: React.FC<GestureGuideProps> = ({
         {gestures.map((item) => {
           const isCurrent =
             activeGesture === item.type ||
-            (item.type === GestureType.HOVER &&
-              (activeGesture === GestureType.OPEN_PALM ||
-                activeGesture === GestureType.PAUSE));
+            (item.type === GestureType.OPEN_PALM && activeGesture === GestureType.PAUSE) ||
+            (item.type === GestureType.HOVER && activeGesture === GestureType.CLUTCH);
 
           return (
             <div
               key={item.type}
-              className={`py-2.5 transition-colors ${
-                isCurrent ? 'text-[#F0F2F6]' : 'text-[#A4B0C1]'
+              className={`py-2.5 transition-all duration-150 ${
+                isCurrent ? 'bg-[#151E2D]/80 px-2 rounded-md -mx-2' : ''
               }`}
             >
               <div className="flex items-center justify-between gap-2">
-                <span
-                  className={`text-xs font-semibold ${
-                    isCurrent
-                      ? item.type === GestureType.ERASE
-                        ? 'text-[#F87171]'
-                        : 'text-[#D5B879]'
-                      : 'text-[#F0F2F6]'
-                  }`}
-                >
-                  {item.title}
-                </span>
-                <span className="text-[11px] text-[#718096]">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-xs font-semibold ${
+                      isCurrent ? 'text-[#F0F2F6]' : 'text-[#A4B0C1]'
+                    }`}
+                  >
+                    {item.title}
+                  </span>
+                  {isCurrent && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-[#0B1220] border border-[#D5B879] text-[#D5B879]">
+                      <Sparkles className="w-2.5 h-2.5" />
+                      Active
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] text-[#718096] font-mono">
                   {item.posture}
                 </span>
               </div>
@@ -89,6 +103,20 @@ export const GestureGuide: React.FC<GestureGuideProps> = ({
           );
         })}
       </div>
+
+      {!compact && (
+        <div className="rounded-lg bg-[#0B1220] border border-[#243247] p-3 text-xs text-[#A4B0C1] space-y-1.5">
+          <div className="font-semibold text-[#F0F2F6] flex items-center gap-1.5">
+            <Camera className="w-3.5 h-3.5 text-[#D5B879]" />
+            <span>Optimal Hand Positioning</span>
+          </div>
+          <ul className="list-disc list-inside space-y-1 text-[11px] text-[#A4B0C1] leading-relaxed">
+            <li>Keep your hand approximately 1.5 to 2.5 feet (45–75 cm) from the camera.</li>
+            <li>Ensure front-facing ambient light so all finger joints are clearly visible.</li>
+            <li>You can also draw anytime with your mouse, trackpad, or stylus!</li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 };

@@ -10,6 +10,7 @@ export interface ReticleRenderOptions {
   tool: ToolType;
   gesture: GestureType;
   isGestureErasing?: boolean;
+  isPaused?: boolean;
 }
 
 /**
@@ -26,12 +27,33 @@ export function renderReticle({
   tool,
   gesture,
   isGestureErasing = false,
+  isPaused = false,
 }: ReticleRenderOptions): void {
   ctx.save();
 
   const radius = Math.max(3.5, size / 2);
-  const isDrawing = gesture === GestureType.DRAW;
-  const isErasing = tool === ToolType.ERASER || isGestureErasing || gesture === GestureType.ERASE;
+  const isDrawing = gesture === GestureType.DRAW && !isPaused;
+  const isErasing =
+    (tool === ToolType.ERASER || isGestureErasing || gesture === GestureType.ERASE) && !isPaused;
+
+  if (isPaused) {
+    // Paused mode (Open Palm or Space): elegant dashed gold reticle with pause markers
+    ctx.beginPath();
+    ctx.arc(x, y, radius + 4, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(213, 184, 121, 0.7)';
+    ctx.lineWidth = 1.25;
+    ctx.setLineDash([3, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Two small pause bars in center
+    ctx.fillStyle = '#D5B879';
+    ctx.fillRect(x - 3, y - 4, 2, 8);
+    ctx.fillRect(x + 1, y - 4, 2, 8);
+
+    ctx.restore();
+    return;
+  }
 
   if (isErasing) {
     // Eraser mode: crisp dashed ring with gentle subtractive backdrop
