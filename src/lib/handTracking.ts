@@ -1,14 +1,16 @@
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 import {
+  GestureState,
   GestureType,
   HandTrackingFrame,
   LandmarkIndex,
   NormalizedLandmark,
 } from '../types/hand';
 import {
+  classifyHandPosture,
   createEmptyGestureResult,
-  recognizeHandGesture,
 } from './gestureRecognition';
+import { GestureStateMachine } from './gestureStateMachine';
 
 const VISION_WASM_CDN =
   'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm';
@@ -27,7 +29,7 @@ export class HandTrackingController {
   private landmarker: HandLandmarker | null = null;
   private isInitializing: boolean = false;
   private lastVideoTime: number = -1;
-  private wasDrawingLastFrame: boolean = false;
+  private stateMachine: GestureStateMachine = new GestureStateMachine();
 
   public async initialize(): Promise<void> {
     if (this.landmarker || this.isInitializing) return;
@@ -74,7 +76,8 @@ export class HandTrackingController {
   public detectFrame(
     video: HTMLVideoElement,
     timestampMs: number,
-    pinchThreshold: number = 0.048
+    pinchThreshold: number = 0.048,
+    enableGestureEraser: boolean = true
   ): HandTrackingFrame {
     if (
       !this.landmarker ||
@@ -82,19 +85,20 @@ export class HandTrackingController {
       video.videoWidth === 0 ||
       video.videoHeight === 0
     ) {
+      const empty = createEmptyGestureResult();
       return {
         hasHand: false,
         handCount: 0,
         landmarks: null,
         handedness: null,
         confidence: 0,
-        gestureResult: createEmptyGestureResult(),
+        gestureResult: empty,
         timestamp: timestampMs,
       };
     }
 
     if (video.currentTime === this.lastVideoTime) {
-      // Video frame hasn't advanced; skip redundant inference
+      // Frame has not advanced
     }
     this.lastVideoTime = video.currentTime;
 
@@ -102,14 +106,40 @@ export class HandTrackingController {
     const handCount = result.landmarks ? result.landmarks.length : 0;
 
     if (handCount === 0 || !result.landmarks[0]) {
-      this.wasDrawingLastFrame = false;
+      const processed = this.stateMachine.process(
+        GestureType.NONE,
+        null,
+        false,
+        0,
+        timestampMs
+      );
+
       return {
         hasHand: false,
         handCount: 0,
         landmarks: null,
         handedness: null,
         confidence: 0,
-        gestureResult: createEmptyGestureResult(),
+        gestureResult: {
+          gesture: processed.activeGesture,
+          state: processed.state,
+          isDrawing: processed.isDrawing,
+          isErasing: processed.isErasing,
+          isPinching: false,
+          pinchDistance: 1,
+          indexTipMirrored: processed.validPoint,
+          thumbTipMirrored: null,
+          pinchMidpointMirrored: null,
+          confidence: 0,
+          stabilityScore: 0,
+          fingersExtended: {
+            thumb: false,
+            index: false,
+            middle: false,
+            ring: false,
+            pinky: false,
+          },
+        },
         timestamp: timestampMs,
       };
     }
@@ -119,14 +149,26 @@ export class HandTrackingController {
       result.handednesses?.[0]?.[0]?.categoryName ?? 'Hand';
     const primaryScore = result.handednesses?.[0]?.[0]?.score ?? 0.9;
 
-    const gestureResult = recognizeHandGesture(
+    const wasDrawingPreviously =
+      this.stateMachine.getCurrentState() === GestureState.DRAWING;
+
+    // 1. Geometric posture classification
+    const posture = classifyHandPosture(
       primaryLandmarks,
       primaryScore,
       pinchThreshold,
-      this.wasDrawingLastFrame
+      wasDrawingPreviously,
+      enableGestureEraser
     );
 
-    this.wasDrawingLastFrame = gestureResult.isDrawing;
+    // 2. Feed into temporal state machine
+    const smResult = this.stateMachine.process(
+      posture.rawGesture,
+      posture.indexTipMirrored,
+      posture.isPinching,
+      primaryScore,
+      timestampMs
+    );
 
     return {
       hasHand: true,
@@ -134,9 +176,26 @@ export class HandTrackingController {
       landmarks: primaryLandmarks,
       handedness: primaryHandedness,
       confidence: primaryScore,
-      gestureResult,
+      gestureResult: {
+        gesture: smResult.activeGesture,
+        state: smResult.state,
+        isDrawing: smResult.isDrawing,
+        isErasing: smResult.isErasing,
+        isPinching: smResult.isPinching,
+        pinchDistance: posture.pinchDistance,
+        indexTipMirrored: smResult.validPoint,
+        thumbTipMirrored: posture.thumbTipMirrored,
+        pinchMidpointMirrored: posture.pinchMidpointMirrored,
+        confidence: primaryScore,
+        stabilityScore: posture.stabilityScore,
+        fingersExtended: posture.fingersExtended,
+      },
       timestamp: timestampMs,
     };
+  }
+
+  public resetStateMachine(): void {
+    this.stateMachine.reset();
   }
 
   public dispose(): void {
@@ -149,15 +208,12 @@ export class HandTrackingController {
       this.landmarker = null;
     }
     this.lastVideoTime = -1;
-    this.wasDrawingLastFrame = false;
+    this.stateMachine.reset();
   }
 }
 
 /**
- * Renders detected hand skeleton and key fingertips onto the webcam preview overlay canvas.
- * Note: The webcam video is mirrored via CSS scaleX(-1), so we either mirror X here
- * or match the canvas coordinate orientation. Here we mirror X (`1 - lm.x`) so the overlay
- * canvas remains upright without needing CSS transform.
+ * Renders detected hand skeleton onto the webcam preview overlay canvas.
  */
 export function drawHandLandmarksOverlay(
   canvas: HTMLCanvasElement,
@@ -179,8 +235,10 @@ export function drawHandLandmarksOverlay(
   // Draw skeletal connections
   ctx.strokeStyle =
     gesture === GestureType.DRAW
-      ? 'rgba(213, 184, 121, 0.78)'
-      : 'rgba(164, 176, 193, 0.45)';
+      ? 'rgba(213, 184, 121, 0.85)'
+      : gesture === GestureType.ERASE
+        ? 'rgba(248, 113, 113, 0.85)'
+        : 'rgba(164, 176, 193, 0.45)';
   ctx.lineWidth = 1.5;
 
   for (const [startIdx, endIdx] of HAND_CONNECTIONS) {
@@ -209,15 +267,16 @@ export function drawHandLandmarksOverlay(
     const y = lm.y * height;
 
     const isIndexTip = idx === LandmarkIndex.INDEX_TIP;
+    const isMiddleTip = idx === LandmarkIndex.MIDDLE_TIP;
     const isThumbTip = idx === LandmarkIndex.THUMB_TIP;
     const isKey = keyTips.has(idx);
 
     ctx.beginPath();
-    const radius = isIndexTip ? 5.5 : isThumbTip ? 4.5 : isKey ? 3 : 2;
+    const radius = isIndexTip ? 5.5 : isThumbTip || isMiddleTip ? 4.5 : isKey ? 3 : 2;
     ctx.arc(x, y, radius, 0, Math.PI * 2);
 
     if (isIndexTip) {
-      ctx.fillStyle = '#D5B879';
+      ctx.fillStyle = gesture === GestureType.ERASE ? '#F87171' : '#D5B879';
       ctx.fill();
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = '#0B1220';
@@ -226,10 +285,18 @@ export function drawHandLandmarksOverlay(
       if (gesture === GestureType.DRAW) {
         ctx.beginPath();
         ctx.arc(x, y, 9.5, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(213, 184, 121, 0.65)';
-        ctx.lineWidth = 1.25;
+        ctx.strokeStyle = 'rgba(213, 184, 121, 0.7)';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
       }
+    } else if (isMiddleTip && gesture === GestureType.ERASE) {
+      ctx.fillStyle = '#F87171';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, y, 9.5, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(248, 113, 113, 0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     } else if (isThumbTip && gesture === GestureType.PINCH) {
       ctx.fillStyle = '#D5B879';
       ctx.fill();
@@ -239,7 +306,7 @@ export function drawHandLandmarksOverlay(
     }
   });
 
-  // If pinching, draw a subtle connection ring between thumb tip and index tip
+  // If pinching, draw connection ring between thumb tip and index tip
   if (gesture === GestureType.PINCH) {
     const indexTip = landmarks[LandmarkIndex.INDEX_TIP];
     const thumbTip = landmarks[LandmarkIndex.THUMB_TIP];

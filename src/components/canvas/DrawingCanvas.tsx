@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Brush, Check, Eraser, Hand, MousePointer2, Sparkles } from 'lucide-react';
+import { Eraser, Hand, MousePointer2, Sparkles } from 'lucide-react';
 import {
   normalizedToCanvasPoint,
   pointerEventToCanvasPoint,
@@ -17,6 +17,8 @@ import {
   GestureType,
   HandTrackingFrame,
 } from '../../types/hand';
+import { GestureDock } from './GestureDock';
+import { renderReticle } from './ReticleRenderer';
 
 export interface DrawingCanvasProps {
   engineRef: React.RefObject<DrawingEngine | null>;
@@ -28,7 +30,7 @@ export interface DrawingCanvasProps {
   onSelectTool: (tool: ToolType) => void;
 }
 
-const DWELL_DURATION_MS = 520;
+const DWELL_DURATION_MS = 500;
 
 export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   engineRef,
@@ -47,10 +49,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
   const isPointerDrawingRef = useRef<boolean>(false);
   const isGestureDrawingRef = useRef<boolean>(false);
+  const isGestureErasingRef = useRef<boolean>(false);
   const smoothedGesturePointRef = useRef<Point | null>(null);
   const pointerPositionRef = useRef<Point | null>(null);
 
-  // Dwell & Pinch target tracking for the On-Canvas Gesture Palette Dock
+  // Dwell & Pinch target tracking for the On-Canvas Gesture Dock
   const hoveredTargetIdRef = useRef<string | null>(null);
   const hoverStartTimeRef = useRef<number>(0);
   const lastTriggeredTargetIdRef = useRef<string | null>(null);
@@ -58,6 +61,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     id: string | null;
     progress: number;
   }>({ id: null, progress: 0 });
+
   const [selectionToast, setSelectionToast] = useState<{
     label: string;
     hex?: string;
@@ -69,7 +73,6 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     height: number;
   }>({ width: 0, height: 0 });
 
-  // Keep latest callbacks and settings in refs for the 60fps loop
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
@@ -93,14 +96,13 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     []
   );
 
-  // Trigger a color or tool selection from the On-Canvas Gesture Dock
   const triggerDockTarget = useCallback((targetId: string) => {
     if (targetId === 'tool:brush') {
       onSelectToolRef.current(ToolType.BRUSH);
-      setSelectionToast({ label: 'Brush Tool', timestamp: Date.now() });
+      setSelectionToast({ label: 'Studio Brush', timestamp: Date.now() });
     } else if (targetId === 'tool:eraser') {
       onSelectToolRef.current(ToolType.ERASER);
-      setSelectionToast({ label: 'Eraser Tool', timestamp: Date.now() });
+      setSelectionToast({ label: 'Precision Eraser', timestamp: Date.now() });
     } else if (targetId.startsWith('color:')) {
       const hex = targetId.replace('color:', '');
       const found = VESPER_PALETTE.find(
@@ -115,7 +117,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     }
   }, []);
 
-  // Attach and resize the DrawingEngine when container size changes
+  // Attach and resize DrawingEngine when container geometry changes
   useEffect(() => {
     const container = containerRef.current;
     const artworkCanvas = artworkCanvasRef.current;
@@ -154,11 +156,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     };
   }, [engineRef]);
 
-  // Render live cursor reticle & process gesture strokes + top palette dock hover on every animation frame
+  // High-performance 60fps RAF loop: processes hand coordinates, state machine strokes, and reticle overlay
   useEffect(() => {
     let rafId: number;
 
-    const renderCursorAndGestureLoop = () => {
+    const renderLoop = () => {
       const cursorCanvas = cursorCanvasRef.current;
       const engine = engineRef.current;
       const container = containerRef.current;
@@ -194,7 +196,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             );
             smoothedGesturePointRef.current = smoothed;
 
-            // Convert canvas-local smoothed point to viewport clientX / clientY to check Dock hit targets
+            // Viewport client coordinates for Dock hit-testing
             const clientX = containerRect.left + smoothed.x;
             const clientY = containerRect.top + smoothed.y;
 
@@ -203,12 +205,11 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
             if (dockRef.current && currentSettings.enablePinchColorCycle) {
               const dockRect = dockRef.current.getBoundingClientRect();
-              // Add a 10px comfort buffer around the top Gesture Palette Dock
               if (
-                clientX >= dockRect.left - 10 &&
-                clientX <= dockRect.right + 10 &&
-                clientY >= dockRect.top - 10 &&
-                clientY <= dockRect.bottom + 12
+                clientX >= dockRect.left - 12 &&
+                clientX <= dockRect.right + 12 &&
+                clientY >= dockRect.top - 12 &&
+                clientY <= dockRect.bottom + 14
               ) {
                 isInsideDockZone = true;
 
@@ -227,9 +228,10 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             }
 
             if (isInsideDockZone) {
-              // Immediately stop any active canvas stroke when hand enters the top Palette Dock
-              if (isGestureDrawingRef.current) {
+              // Immediately terminate any active stroke when hand enters the top dock
+              if (isGestureDrawingRef.current || isGestureErasingRef.current) {
                 isGestureDrawingRef.current = false;
+                isGestureErasingRef.current = false;
                 engine.endStroke();
               }
 
@@ -245,7 +247,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                   const progress = Math.min(1, elapsed / DWELL_DURATION_MS);
                   setHoveredTargetUI({ id: hitTargetId, progress });
 
-                  // Select if user either completes dwell (520ms) OR pinches while over the swatch
+                  // Confirm selection on dwell completion or deliberate pinch
                   if (
                     (progress >= 1 || frame.gestureResult.isPinching) &&
                     lastTriggeredTargetIdRef.current !== hitTargetId
@@ -260,52 +262,84 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 setHoveredTargetUI({ id: null, progress: 0 });
               }
             } else {
-              // Hand is in the main drawing canvas area (outside the top Palette Dock)
+              // Hand is over canvas drawing area
               if (hoveredTargetIdRef.current !== null) {
                 hoveredTargetIdRef.current = null;
                 lastTriggeredTargetIdRef.current = null;
                 setHoveredTargetUI({ id: null, progress: 0 });
               }
 
-              // Connect gesture state to DrawingEngine (never changes color mid-drawing!)
-              if (
-                frame.gestureResult.isDrawing &&
-                !isPointerDrawingRef.current
-              ) {
-                if (!isGestureDrawingRef.current) {
-                  isGestureDrawingRef.current = true;
-                  engine.startStroke(smoothed, {
-                    color: currentSettings.color,
-                    size: currentSize,
-                    opacity: currentSettings.opacity,
-                    smoothing: currentSettings.smoothing,
-                    tool: currentSettings.tool,
-                  });
+              const isGestureErasing = frame.gestureResult.isErasing;
+              const isGestureDrawing = frame.gestureResult.isDrawing && !isGestureErasing;
+
+              if (!isPointerDrawingRef.current) {
+                if (isGestureErasing) {
+                  // V-sign Eraser active
+                  if (!isGestureErasingRef.current) {
+                    if (isGestureDrawingRef.current) {
+                      isGestureDrawingRef.current = false;
+                      engine.endStroke();
+                    }
+                    isGestureErasingRef.current = true;
+                    engine.startStroke(smoothed, {
+                      color: '#000000',
+                      size: currentSettings.eraserSize,
+                      opacity: 1,
+                      smoothing: currentSettings.smoothing,
+                      tool: ToolType.ERASER,
+                    });
+                  } else {
+                    engine.addPointToStroke(smoothed);
+                  }
+                } else if (isGestureDrawing) {
+                  // Normal brush drawing active
+                  if (!isGestureDrawingRef.current) {
+                    if (isGestureErasingRef.current) {
+                      isGestureErasingRef.current = false;
+                      engine.endStroke();
+                    }
+                    isGestureDrawingRef.current = true;
+                    engine.startStroke(smoothed, {
+                      color: currentSettings.color,
+                      size: currentSize,
+                      opacity: currentSettings.opacity,
+                      smoothing: currentSettings.smoothing,
+                      tool: currentSettings.tool,
+                    });
+                  } else {
+                    engine.addPointToStroke(smoothed);
+                  }
                 } else {
-                  engine.addPointToStroke(smoothed);
+                  // Not drawing or erasing
+                  if (isGestureDrawingRef.current || isGestureErasingRef.current) {
+                    isGestureDrawingRef.current = false;
+                    isGestureErasingRef.current = false;
+                    engine.endStroke();
+                  }
                 }
-              } else if (isGestureDrawingRef.current) {
-                isGestureDrawingRef.current = false;
-                engine.endStroke();
               }
             }
 
-            // Draw precision hand cursor reticle on cursor overlay canvas
-            drawReticle(
+            // Render live spatial hand reticle
+            renderReticle({
               ctx,
-              smoothed.x,
-              smoothed.y,
-              currentSize,
-              currentSettings.color,
-              currentSettings.tool,
-              isInsideDockZone
-                ? GestureType.PAUSE
-                : frame.gestureResult.gesture
-            );
+              x: smoothed.x,
+              y: smoothed.y,
+              size: frame.gestureResult.isErasing
+                ? currentSettings.eraserSize
+                : currentSize,
+              color: currentSettings.color,
+              tool: currentSettings.tool,
+              gesture: isInsideDockZone
+                ? GestureType.HOVER
+                : frame.gestureResult.gesture,
+              isGestureErasing: frame.gestureResult.isErasing,
+            });
           } else {
-            // Hand left frame
-            if (isGestureDrawingRef.current) {
+            // Hand out of frame
+            if (isGestureDrawingRef.current || isGestureErasingRef.current) {
               isGestureDrawingRef.current = false;
+              isGestureErasingRef.current = false;
               smoothedGesturePointRef.current = null;
               engine.endStroke();
             }
@@ -315,34 +349,34 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
               setHoveredTargetUI({ id: null, progress: 0 });
             }
 
-            // Fallback: draw pointer cursor reticle if mouse is hovering over canvas
+            // Mouse pointer fallback reticle
             if (pointerPositionRef.current) {
-              drawReticle(
+              renderReticle({
                 ctx,
-                pointerPositionRef.current.x,
-                pointerPositionRef.current.y,
-                currentSize,
-                currentSettings.color,
-                currentSettings.tool,
-                isPointerDrawingRef.current
+                x: pointerPositionRef.current.x,
+                y: pointerPositionRef.current.y,
+                size: currentSize,
+                color: currentSettings.color,
+                tool: currentSettings.tool,
+                gesture: isPointerDrawingRef.current
                   ? GestureType.DRAW
-                  : GestureType.PAUSE
-              );
+                  : GestureType.HOVER,
+              });
             }
           }
         }
       }
 
-      rafId = requestAnimationFrame(renderCursorAndGestureLoop);
+      rafId = requestAnimationFrame(renderLoop);
     };
 
-    rafId = requestAnimationFrame(renderCursorAndGestureLoop);
+    rafId = requestAnimationFrame(renderLoop);
     return () => {
       cancelAnimationFrame(rafId);
     };
   }, [cameraState, engineRef, latestTrackingFrameRef, triggerDockTarget]);
 
-  // Mouse / Pointer fallback handlers
+  // Pointer / Mouse events fallback
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (e.button !== 0 || !artworkCanvasRef.current || !engineRef.current)
@@ -352,8 +386,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       const pt = pointerEventToCanvasPoint(e, artworkCanvasRef.current);
       pointerPositionRef.current = pt;
 
-      if (isGestureDrawingRef.current) {
+      if (isGestureDrawingRef.current || isGestureErasingRef.current) {
         isGestureDrawingRef.current = false;
+        isGestureErasingRef.current = false;
         engineRef.current.endStroke();
       }
 
@@ -403,13 +438,27 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     }
   }, [engineRef]);
 
+  const activeBg = settings.background;
+
   return (
     <div className="flex-1 h-full bg-[#0B1220] p-3 sm:p-5 flex flex-col overflow-hidden select-none">
-      {/* Warm Ivory (#F7F5F0) Studio Canvas Frame */}
+      {/* Dynamic Paper Frame */}
       <div
         ref={containerRef}
-        className="relative flex-1 w-full h-full rounded-xl bg-[#F7F5F0] border border-[#243247] shadow-xl overflow-hidden cursor-none"
+        style={{ backgroundColor: activeBg.hex }}
+        className="relative flex-1 w-full h-full rounded-xl border border-[#243247] shadow-2xl overflow-hidden cursor-none transition-colors duration-200"
       >
+        {/* Subtle Drafting Grid (Optional paper style) */}
+        {activeBg.grid && (
+          <div
+            className="absolute inset-0 pointer-events-none opacity-40"
+            style={{
+              backgroundImage: `linear-gradient(to right, #243247 1px, transparent 1px), linear-gradient(to bottom, #243247 1px, transparent 1px)`,
+              backgroundSize: '32px 32px',
+            }}
+          />
+        )}
+
         {/* Artwork Layer */}
         <canvas
           ref={artworkCanvasRef}
@@ -422,127 +471,23 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           className="absolute inset-0 w-full h-full touch-none"
         />
 
-        {/* On-Canvas Top Gesture Palette & Tool Dock (Hover or Pinch with hand cursor to select without mid-drawing accidents) */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 max-w-[95%]">
-          <div
-            ref={dockRef}
-            aria-label="Gesture Color and Tool Bar"
-            className="flex items-center gap-1.5 sm:gap-2 rounded-xl bg-[#151E2D]/95 border border-[#243247] px-2.5 py-1.5 shadow-lg backdrop-blur-xs"
-          >
-            <span className="hidden md:inline text-[11px] font-medium text-[#A4B0C1] pr-1 whitespace-nowrap">
-              Hover to Pick:
-            </span>
+        {/* Top Gesture Palette & Tool Dock */}
+        <GestureDock
+          dockRef={dockRef}
+          activeTool={settings.tool}
+          activeColor={settings.color}
+          hoveredTargetUI={hoveredTargetUI}
+          registerTargetRef={registerTargetRef}
+          onSelectTarget={triggerDockTarget}
+        />
 
-            {/* 8 VESPER Swatches */}
-            <div className="flex items-center gap-1.5">
-              {VESPER_PALETTE.map((swatch) => {
-                const targetId = `color:${swatch.hex}`;
-                const isSelected =
-                  swatch.hex.toLowerCase() === settings.color.toLowerCase() &&
-                  settings.tool === ToolType.BRUSH;
-                const isHoveredByHand = hoveredTargetUI.id === targetId;
-                const isLight =
-                  swatch.id === 'ivory' || swatch.id === 'champagne-gold';
-
-                return (
-                  <button
-                    key={swatch.id}
-                    ref={(el) => registerTargetRef(targetId, el)}
-                    type="button"
-                    onClick={() => triggerDockTarget(targetId)}
-                    title={`${swatch.name} (Hover with hand or click)`}
-                    aria-label={`Select ${swatch.name}`}
-                    className={`relative w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center transition-transform duration-150 cursor-pointer ${
-                      isSelected
-                        ? 'ring-2 ring-[#D5B879] ring-offset-2 ring-offset-[#151E2D] scale-105'
-                        : isHoveredByHand
-                          ? 'scale-110 ring-2 ring-[#D5B879]/80'
-                          : 'border border-[#243247] hover:scale-105'
-                    }`}
-                    style={{ backgroundColor: swatch.hex }}
-                  >
-                    {isSelected && (
-                      <Check
-                        className={`w-3.5 h-3.5 stroke-[2.5] ${
-                          isLight ? 'text-[#0B1220]' : 'text-[#F0F2F6]'
-                        }`}
-                      />
-                    )}
-
-                    {/* Circular Dwell Progress Indicator when hand hovers over swatch */}
-                    {isHoveredByHand && (
-                      <svg
-                        viewBox="0 0 36 36"
-                        className="pointer-events-none absolute -inset-1 w-9 h-9 sm:w-10 sm:h-10 -rotate-90"
-                      >
-                        <circle
-                          cx="18"
-                          cy="18"
-                          r="15"
-                          fill="none"
-                          stroke="#D5B879"
-                          strokeWidth="2.5"
-                          strokeDasharray={94.2}
-                          strokeDashoffset={
-                            94.2 * (1 - hoveredTargetUI.progress)
-                          }
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="w-px h-5 bg-[#243247] mx-0.5" />
-
-            {/* Quick Gesture Brush & Eraser Targets */}
-            <div className="flex items-center gap-1">
-              <button
-                ref={(el) => registerTargetRef('tool:brush', el)}
-                type="button"
-                onClick={() => triggerDockTarget('tool:brush')}
-                title="Brush Tool (Hover with hand or click)"
-                className={`relative h-7 sm:h-8 px-2.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors cursor-pointer ${
-                  settings.tool === ToolType.BRUSH
-                    ? 'bg-[#D5B879] text-[#0B1220] font-semibold'
-                    : hoveredTargetUI.id === 'tool:brush'
-                      ? 'bg-[#243247] text-[#D5B879]'
-                      : 'bg-[#0B1220] text-[#A4B0C1] border border-[#243247]'
-                }`}
-              >
-                <Brush className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Brush</span>
-              </button>
-
-              <button
-                ref={(el) => registerTargetRef('tool:eraser', el)}
-                type="button"
-                onClick={() => triggerDockTarget('tool:eraser')}
-                title="Eraser Tool (Hover with hand or click)"
-                className={`relative h-7 sm:h-8 px-2.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors cursor-pointer ${
-                  settings.tool === ToolType.ERASER
-                    ? 'bg-[#D5B879] text-[#0B1220] font-semibold'
-                    : hoveredTargetUI.id === 'tool:eraser'
-                      ? 'bg-[#243247] text-[#D5B879]'
-                      : 'bg-[#0B1220] text-[#A4B0C1] border border-[#243247]'
-                }`}
-              >
-                <Eraser className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Eraser</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Real-Time Hand & Pointer Reticle Layer (above dock so you see your fingertip over swatches) */}
+        {/* Real-Time Cursor Layer */}
         <canvas
           ref={cursorCanvasRef}
           className="pointer-events-none absolute inset-0 w-full h-full z-20"
         />
 
-        {/* Eraser Active Banner */}
+        {/* Eraser Active Pill */}
         {settings.tool === ToolType.ERASER && (
           <div className="pointer-events-none absolute bottom-10 left-4 z-10 flex items-center gap-2 rounded-md bg-[#0B1220]/90 border border-[#D5B879] px-3 py-1.5 text-xs font-medium text-[#F0F2F6] shadow-md">
             <Eraser className="w-3.5 h-3.5 text-[#D5B879]" />
@@ -551,8 +496,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         )}
 
         {/* Color/Tool Selection Confirmation Toast */}
-        {selectionToast && Date.now() - selectionToast.timestamp < 1400 && (
-          <div className="pointer-events-none absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-md bg-[#0B1220]/95 border border-[#D5B879] px-3 py-1.5 text-xs font-medium text-[#F0F2F6] shadow-md">
+        {selectionToast && Date.now() - selectionToast.timestamp < 1300 && (
+          <div className="pointer-events-none absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-md bg-[#0B1220]/95 border border-[#D5B879] px-3 py-1.5 text-xs font-medium text-[#F0F2F6] shadow-xl">
             <Sparkles className="w-3.5 h-3.5 text-[#D5B879]" />
             <span>Selected: {selectionToast.label}</span>
             {selectionToast.hex && (
@@ -564,79 +509,27 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           </div>
         )}
 
-        {/* Subtle Bottom-Left Input Mode & Resolution Watermark */}
-        <div className="pointer-events-none absolute bottom-3 left-4 flex items-center gap-2 text-[11px] font-mono text-[#475569]/80 tabular-nums">
+        {/* Subtle Canvas Corner Information */}
+        <div className="pointer-events-none absolute bottom-3 left-4 flex items-center gap-2 text-[11px] font-mono text-[#718096] tabular-nums">
           {cameraState === CameraState.ACTIVE ? (
             <span className="inline-flex items-center gap-1.5">
-              <Hand className="w-3.5 h-3.5" />
-              <span>Gesture + Mouse Active</span>
+              <Hand className="w-3.5 h-3.5 text-[#D5B879]" />
+              <span>Spatial Gesture Studio Active</span>
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5">
               <MousePointer2 className="w-3.5 h-3.5" />
-              <span>Mouse Mode (Enable Camera for Gestures)</span>
+              <span>Mouse Mode</span>
             </span>
           )}
           <span aria-hidden="true">·</span>
           <span>
-            {canvasDimensions.width}×{canvasDimensions.height}
+            {canvasDimensions.width}×{canvasDimensions.height} px
           </span>
+          <span aria-hidden="true">·</span>
+          <span>{activeBg.name}</span>
         </div>
       </div>
     </div>
   );
 };
-
-function drawReticle(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  size: number,
-  color: string,
-  tool: ToolType,
-  gesture: GestureType
-) {
-  ctx.save();
-
-  const radius = Math.max(4, size / 2);
-  const isDrawing = gesture === GestureType.DRAW;
-
-  if (tool === ToolType.ERASER) {
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(247, 245, 240, 0.65)';
-    ctx.fill();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#0B1220';
-    ctx.setLineDash([4, 3]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  } else {
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.globalAlpha = isDrawing ? 0.85 : 0.42;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-
-    ctx.lineWidth = isDrawing ? 2 : 1.25;
-    ctx.strokeStyle =
-      color.toLowerCase() === '#f7f5f0' ? '#0B1220' : '#D5B879';
-    ctx.stroke();
-  }
-
-  if (isDrawing) {
-    ctx.beginPath();
-    ctx.arc(x, y, radius + 6, 0, Math.PI * 2);
-    ctx.strokeStyle = '#D5B879';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-  } else {
-    ctx.beginPath();
-    ctx.arc(x, y, 2.2, 0, Math.PI * 2);
-    ctx.fillStyle = '#D5B879';
-    ctx.fill();
-  }
-
-  ctx.restore();
-}

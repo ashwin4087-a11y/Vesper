@@ -38,6 +38,23 @@ export const StatusBar: React.FC<StatusBarProps> = ({
       (c) => c.hex.toLowerCase() === activeColor.toLowerCase()
     ) || VESPER_PALETTE[0];
 
+  let postureText = 'Standby';
+  if (isCameraActive) {
+    if (!trackingStatus.hasHand) {
+      postureText = 'Searching for hand…';
+    } else if (trackingStatus.isErasing || trackingStatus.gesture === GestureType.ERASE) {
+      postureText = 'V-Sign Eraser Active';
+    } else if (trackingStatus.isDrawing || trackingStatus.gesture === GestureType.DRAW) {
+      postureText = 'Drawing (Continuous Ink)';
+    } else if (trackingStatus.isPinching || trackingStatus.gesture === GestureType.PINCH) {
+      postureText = 'Pinching (Selection)';
+    } else if (trackingStatus.gesture === GestureType.OPEN_PALM) {
+      postureText = 'Paused (Open Palm)';
+    } else {
+      postureText = 'Spatial Hover';
+    }
+  }
+
   return (
     <footer
       aria-label="Studio Status Bar"
@@ -71,15 +88,15 @@ export const StatusBar: React.FC<StatusBarProps> = ({
           />
           <span>
             Hand:{' '}
-            {!isCameraActive
-              ? 'Standby'
-              : trackingStatus.hasHand
-                ? trackingStatus.gesture === GestureType.DRAW
-                  ? 'Drawing'
-                  : trackingStatus.gesture === GestureType.PINCH
-                    ? 'Pinching'
-                    : 'Detected (Paused)'
-                : 'Not Detected'}
+            <strong
+              className={
+                trackingStatus.isDrawing || trackingStatus.isErasing
+                  ? 'text-[#D5B879] font-medium'
+                  : 'text-[#F0F2F6] font-normal'
+              }
+            >
+              {postureText}
+            </strong>
           </span>
         </div>
 
@@ -87,16 +104,16 @@ export const StatusBar: React.FC<StatusBarProps> = ({
           ·
         </span>
 
-        <div className="font-mono tabular-nums">
+        <div className="font-mono tabular-nums text-[#718096]">
           <span>Confidence: {confidencePct}</span>
         </div>
       </div>
 
-      {/* Right: Selected Tool, Brush Size, Selected Color & Stroke Count */}
+      {/* Right: Selected Tool, Caliber, Selected Pigment & Stroke Count */}
       <div className="flex items-center gap-3 whitespace-nowrap shrink-0">
         <div className="flex items-center gap-1.5">
           {activeTool === ToolType.ERASER ? (
-            <Eraser className="w-3 h-3 text-[#D5B879]" />
+            <Eraser className="w-3 h-3 text-[#F87171]" />
           ) : (
             <Brush className="w-3 h-3 text-[#D5B879]" />
           )}

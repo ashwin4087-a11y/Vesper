@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Check, Keyboard } from 'lucide-react';
+import { AlertTriangle, Check } from 'lucide-react';
 import { CanvasToolbar } from './components/canvas/CanvasToolbar';
 import { DrawingCanvas } from './components/canvas/DrawingCanvas';
 import { Sidebar } from './components/layout/Sidebar';
@@ -9,10 +9,12 @@ import { GestureGuide } from './components/onboarding/GestureGuide';
 import { WelcomeScreen } from './components/onboarding/WelcomeScreen';
 import { Button } from './components/ui/Button';
 import { Dialog } from './components/ui/Dialog';
+import { ExportDialog } from './components/ui/ExportDialog';
 import { useCamera } from './hooks/useCamera';
 import { useDrawing } from './hooks/useDrawing';
 import { useHandTracking } from './hooks/useHandTracking';
-import { ToolType, VESPER_PALETTE } from './types/drawing';
+import { ExportSettings, ToolType, VESPER_PALETTE } from './types/drawing';
+import { CameraState } from './types/hand';
 
 export default function App() {
   const [inStudio, setInStudio] = useState<boolean>(false);
@@ -20,7 +22,8 @@ export default function App() {
   const [clearDialogOpen, setClearDialogOpen] = useState<boolean>(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState<boolean>(false);
   const [guideDialogOpen, setGuideDialogOpen] = useState<boolean>(false);
-  const [exportNotice, setExportNotice] = useState<boolean>(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState<boolean>(false);
+  const [exportSuccessNotice, setExportSuccessNotice] = useState<string | null>(null);
 
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -44,12 +47,15 @@ export default function App() {
     strokeCount,
     setTool,
     setColor,
+    applyPreset,
     setBrushSize,
     setOpacity,
     setSmoothing,
     setPinchThreshold,
+    setBackground,
     toggleShowLandmarks,
     togglePinchColorCycle,
+    toggleGestureEraser,
     undo,
     redo,
     clearCanvas,
@@ -67,14 +73,27 @@ export default function App() {
     cameraState,
     pinchThreshold: settings.pinchThreshold,
     showLandmarks: settings.showLandmarks,
+    enableGestureEraser: settings.enableGestureEraser,
   });
 
-  // Automatically collapse right panel on narrow tablet/mobile screens on initial studio entry
+  // Automatically collapse right panel on narrow tablet/mobile screens
   useEffect(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       setIsRightPanelOpen(false);
     }
   }, []);
+
+  // Protect unsaved artwork on tab close
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (strokeCount > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [strokeCount]);
 
   const handleEnterStudio = useCallback(
     (autoStartCamera: boolean = false) => {
@@ -86,20 +105,27 @@ export default function App() {
     [startCamera]
   );
 
-  // When exiting the studio: stop video stream, release media tracks, dispose tracking resources, preserve artwork
+  // When exiting studio: stop video stream, release tracks, reset tracking, keep artwork
   const handleExitStudio = useCallback(() => {
     stopCamera();
     disposeTracking();
     setInStudio(false);
   }, [stopCamera, disposeTracking]);
 
-  const handleSaveArtwork = useCallback(() => {
-    const ok = exportArtwork();
-    if (ok) {
-      setExportNotice(true);
-      window.setTimeout(() => setExportNotice(false), 2200);
-    }
-  }, [exportArtwork]);
+  const handleExportConfirm = useCallback(
+    (exportSettings: ExportSettings) => {
+      const ok = exportArtwork(exportSettings);
+      if (ok) {
+        setExportSuccessNotice(
+          `Exported "${exportSettings.title}.png" (${exportSettings.scale}x ${
+            exportSettings.transparentBackground ? 'Transparent' : settings.background.name
+          })`
+        );
+        window.setTimeout(() => setExportSuccessNotice(null), 3000);
+      }
+    },
+    [exportArtwork, settings.background]
+  );
 
   // Studio Keyboard Shortcuts
   useEffect(() => {
@@ -132,6 +158,13 @@ export default function App() {
         return;
       }
 
+      // Export hotkey
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        setExportDialogOpen(true);
+        return;
+      }
+
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const key = e.key.toLowerCase();
@@ -147,6 +180,13 @@ export default function App() {
         setBrushSize(activeSize + 3);
       } else if (e.key === '?') {
         setGuideDialogOpen((prev) => !prev);
+      } else if (e.code === 'Space') {
+        e.preventDefault();
+        if (cameraState === CameraState.ACTIVE) {
+          stopCamera();
+        } else {
+          startCamera();
+        }
       } else if (/^[1-8]$/.test(e.key)) {
         const idx = Number(e.key) - 1;
         if (VESPER_PALETTE[idx]) {
@@ -160,12 +200,15 @@ export default function App() {
   }, [
     inStudio,
     activeSize,
+    cameraState,
     undo,
     redo,
     setTool,
     setColor,
     setBrushSize,
     toggleShowLandmarks,
+    startCamera,
+    stopCamera,
   ]);
 
   if (!inStudio) {
@@ -179,40 +222,44 @@ export default function App() {
         artworkTitle={artworkTitle}
         cameraState={cameraState}
         isRightPanelOpen={isRightPanelOpen}
+        background={settings.background}
         onChangeArtworkTitle={setArtworkTitle}
-        onSaveArtwork={handleSaveArtwork}
+        onSelectBackground={setBackground}
+        onOpenExportDialog={() => setExportDialogOpen(true)}
         onOpenSettings={() => setSettingsDialogOpen(true)}
         onOpenGuide={() => setGuideDialogOpen(true)}
         onToggleRightPanel={() => setIsRightPanelOpen((prev) => !prev)}
         onExitStudio={handleExitStudio}
       />
 
-      {/* Export Confirmation Toast */}
-      {exportNotice && (
-        <div className="fixed top-16 right-6 z-50 flex items-center gap-2 rounded-lg bg-[#151E2D] border border-[#D5B879] px-3.5 py-2 text-xs font-medium text-[#F0F2F6] shadow-xl">
+      {/* Export Confirmation Notification */}
+      {exportSuccessNotice && (
+        <div className="fixed top-16 right-6 z-50 flex items-center gap-2 rounded-lg bg-[#151E2D] border border-[#D5B879] px-4 py-2.5 text-xs font-medium text-[#F0F2F6] shadow-2xl">
           <Check className="w-4 h-4 text-[#D5B879]" />
-          <span>Artwork exported as high-resolution PNG</span>
+          <span>{exportSuccessNotice}</span>
         </div>
       )}
 
       {/* Main Studio Workspace */}
       <div className="flex-1 flex min-h-0 overflow-hidden relative">
-        {/* Left Toolbar */}
+        {/* Left Vertical Instrument Toolbar */}
         <CanvasToolbar
           activeTool={settings.tool}
           activeSize={activeSize}
           activeColor={settings.color}
+          activePresetId={settings.activePresetId}
           canUndo={canUndo}
           canRedo={canRedo}
           strokeCount={strokeCount}
           onSelectTool={setTool}
+          onApplyPreset={applyPreset}
           onChangeSize={setBrushSize}
           onUndo={undo}
           onRedo={redo}
           onRequestClear={() => setClearDialogOpen(true)}
         />
 
-        {/* Center Warm Ivory Drawing Canvas with Top Gesture Palette Dock */}
+        {/* Center Spatial Drawing Canvas */}
         <DrawingCanvas
           engineRef={engineRef}
           settings={settings}
@@ -223,7 +270,7 @@ export default function App() {
           onSelectTool={setTool}
         />
 
-        {/* Right Panel: Camera Preview, Palette, Brush Settings & Gesture Guide */}
+        {/* Right Panel: Optical Feed, Color Pigments, Instrument Settings */}
         <Sidebar
           isOpen={isRightPanelOpen}
           videoRef={videoRef}
@@ -239,13 +286,15 @@ export default function App() {
           onToggleLandmarks={toggleShowLandmarks}
           onRetryModel={retryModelLoad}
           onSelectColor={setColor}
+          onApplyPreset={applyPreset}
           onChangeSize={setBrushSize}
           onChangeOpacity={setOpacity}
           onChangeSmoothing={setSmoothing}
+          onToggleGestureEraser={toggleGestureEraser}
         />
       </div>
 
-      {/* Bottom Status Bar */}
+      {/* Bottom Status Telemetry Bar */}
       <StatusBar
         cameraState={cameraState}
         trackingStatus={trackingStatus}
@@ -255,12 +304,22 @@ export default function App() {
         strokeCount={strokeCount}
       />
 
+      {/* Export Artwork Modal */}
+      <ExportDialog
+        open={exportDialogOpen}
+        artworkTitle={artworkTitle}
+        background={settings.background}
+        strokeCount={strokeCount}
+        onClose={() => setExportDialogOpen(false)}
+        onExport={handleExportConfirm}
+      />
+
       {/* Clear Canvas Confirmation Dialog */}
       <Dialog
         open={clearDialogOpen}
         onClose={() => setClearDialogOpen(false)}
         title="Clear Canvas Artwork?"
-        description="This action will permanently remove all current strokes from your warm ivory canvas. This cannot be undone."
+        description="This will permanently delete all strokes on the active canvas. This cannot be undone."
       >
         <div className="mt-4 flex flex-col gap-4">
           <div className="flex items-start gap-3 rounded-lg bg-[#0B1220] border border-[#243247] p-3.5 text-xs text-[#A4B0C1]">
@@ -270,7 +329,7 @@ export default function App() {
               <strong className="text-[#F0F2F6] font-mono tabular-nums">
                 {strokeCount}
               </strong>{' '}
-              recorded stroke{strokeCount === 1 ? '' : 's'} on "{artworkTitle}".
+              stroke{strokeCount === 1 ? '' : 's'} on "{artworkTitle}".
             </span>
           </div>
 
@@ -296,16 +355,16 @@ export default function App() {
         </div>
       </Dialog>
 
-      {/* Studio Settings & Calibration Dialog */}
+      {/* Studio Settings Dialog */}
       <Dialog
         open={settingsDialogOpen}
         onClose={() => setSettingsDialogOpen(false)}
-        title="Studio & Tracking Settings"
-        description="Calibrate gesture thresholds, landmark overlays, and keyboard controls."
+        title="Studio & Gesture Settings"
+        description="Calibrate optical tracking thresholds and input behavior."
         maxWidthClass="max-w-lg"
       >
-        <div className="space-y-5 text-xs">
-          {/* Pinch Distance Threshold */}
+        <div className="space-y-4 text-xs">
+          {/* Pinch Sensitivity Threshold */}
           <div className="space-y-2 rounded-lg bg-[#0B1220] border border-[#243247] p-4">
             <div className="flex items-center justify-between">
               <label
@@ -319,13 +378,13 @@ export default function App() {
               </span>
             </div>
             <p className="text-[#A4B0C1] leading-relaxed">
-              Normalized 3D distance between Thumb Tip (4) and Index Fingertip
-              (8) for instant pinch selection on the top palette bar.
+              3D distance between Thumb (Landmark 4) and Index Fingertip (Landmark 8)
+              for triggering instant dock selection.
             </p>
             <input
               id="vesper-pinch-slider"
               type="range"
-              min={28}
+              min={25}
               max={80}
               value={Math.round(settings.pinchThreshold * 1000)}
               onChange={(e) => setPinchThreshold(Number(e.target.value) / 1000)}
@@ -333,16 +392,15 @@ export default function App() {
             />
           </div>
 
-          {/* Toggle Switches */}
+          {/* Feature Toggles */}
           <div className="space-y-2.5 rounded-lg bg-[#0B1220] border border-[#243247] p-4">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="font-semibold text-[#F0F2F6]">
-                  Top Palette Bar Hand Selection
+                  Top Gesture Dock Selection
                 </div>
                 <div className="text-[#A4B0C1] mt-0.5">
-                  Hover or pinch with your hand cursor over the top palette bar
-                  to choose colors and tools without mid-drawing changes.
+                  Hover or pinch over the top palette bar to select pigments and tools
                 </div>
               </div>
               <Button
@@ -360,11 +418,31 @@ export default function App() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="font-semibold text-[#F0F2F6]">
-                  Render Hand Landmarks Overlay
+                  V-Sign Gesture Eraser
                 </div>
                 <div className="text-[#A4B0C1] mt-0.5">
-                  Display the 21-point MediaPipe skeleton over the mirrored
-                  webcam preview.
+                  Hold 2 fingers raised (Peace sign) to erase strokes without clicking
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                active={settings.enableGestureEraser}
+                onClick={toggleGestureEraser}
+              >
+                {settings.enableGestureEraser ? 'Enabled' : 'Disabled'}
+              </Button>
+            </div>
+
+            <div className="h-px bg-[#243247] my-2" />
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-semibold text-[#F0F2F6]">
+                  Optical Skeleton Overlay
+                </div>
+                <div className="text-[#A4B0C1] mt-0.5">
+                  Display the 21-point MediaPipe mesh over webcam preview
                 </div>
               </div>
               <Button
@@ -375,40 +453,6 @@ export default function App() {
               >
                 {settings.showLandmarks ? 'Visible' : 'Hidden'}
               </Button>
-            </div>
-          </div>
-
-          {/* Keyboard Shortcuts Summary */}
-          <div className="rounded-lg bg-[#0B1220] border border-[#243247] p-4 space-y-2.5">
-            <div className="flex items-center gap-2 font-semibold text-[#F0F2F6]">
-              <Keyboard className="w-4 h-4 text-[#D5B879]" />
-              <span>Keyboard Shortcuts</span>
-            </div>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[#A4B0C1]">
-              <div className="flex justify-between">
-                <span>Brush / Eraser</span>
-                <kbd className="font-mono text-[#D5B879]">B / E</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span>Brush Caliber</span>
-                <kbd className="font-mono text-[#D5B879]">[ / ]</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span>Select Pigment</span>
-                <kbd className="font-mono text-[#D5B879]">1 – 8</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span>Landmark Overlay</span>
-                <kbd className="font-mono text-[#D5B879]">L</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span>Undo Stroke</span>
-                <kbd className="font-mono text-[#D5B879]">⌘Z / Ctrl+Z</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span>Redo Stroke</span>
-                <kbd className="font-mono text-[#D5B879]">⇧⌘Z / Ctrl+Y</kbd>
-              </div>
             </div>
           </div>
 
@@ -424,56 +468,23 @@ export default function App() {
         </div>
       </Dialog>
 
-      {/* Studio Onboarding & Gesture Guide Dialog */}
+      {/* Gesture Guide Dialog */}
       <Dialog
         open={guideDialogOpen}
         onClose={() => setGuideDialogOpen(false)}
         title="Studio Gesture Guide"
-        description="Follow these five steps to draw effortlessly in the air."
+        description="Master the spatial postures to create digital art effortlessly."
         maxWidthClass="max-w-lg"
       >
-        <div className="space-y-5">
-          <ol className="space-y-2 text-xs text-[#A4B0C1] list-decimal list-inside bg-[#0B1220] border border-[#243247] rounded-lg p-4">
-            <li>
-              <strong className="text-[#F0F2F6]">Allow camera access</strong>{' '}
-              using the Enable Camera button in the right panel.
-            </li>
-            <li>
-              <strong className="text-[#F0F2F6]">
-                Raise your index finger
-              </strong>{' '}
-              while keeping your middle, ring, and pinky fingers folded.
-            </li>
-            <li>
-              <strong className="text-[#F0F2F6]">
-                Move your finger to draw
-              </strong>{' '}
-              smooth continuous strokes across the warm ivory canvas.
-            </li>
-            <li>
-              <strong className="text-[#F0F2F6]">
-                Lower your finger or open your palm
-              </strong>{' '}
-              to pause cleanly between separate strokes.
-            </li>
-            <li>
-              <strong className="text-[#F0F2F6]">
-                Pick colors from the top palette bar
-              </strong>{' '}
-              by moving your hand cursor to the top of the canvas and holding
-              over any color swatch (or clicking with your mouse).
-            </li>
-          </ol>
-
+        <div className="space-y-4">
           <GestureGuide activeGesture={trackingStatus.gesture} />
-
-          <div className="flex justify-end pt-1">
+          <div className="flex justify-end pt-2">
             <Button
               variant="primary"
               size="md"
               onClick={() => setGuideDialogOpen(false)}
             >
-              Back to Canvas
+              Back to Studio
             </Button>
           </div>
         </div>

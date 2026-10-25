@@ -15,20 +15,26 @@ export const GestureGuide: React.FC<GestureGuideProps> = ({
       type: GestureType.DRAW,
       title: 'Draw Stroke',
       posture: 'Index extended · others folded',
-      detail: 'Tracks Landmark 8 (Index Tip) for continuous ink strokes.',
+      detail: 'Directs continuous ink strokes from your index fingertip onto the canvas.',
     },
     {
-      type: GestureType.PAUSE,
-      title: 'Pause / Hover',
-      posture: 'Open palm or lower index finger',
-      detail: 'Lifts the brush cleanly while keeping the cursor reticle visible.',
+      type: GestureType.ERASE,
+      title: 'V-Sign Eraser',
+      posture: 'Index + Middle extended (Peace)',
+      detail: 'Instantly activates the subtractive eraser without clicking any buttons.',
+    },
+    {
+      type: GestureType.HOVER,
+      title: 'Hover / Move',
+      posture: 'Open palm or relaxed hand',
+      detail: 'Lifts the brush cleanly while tracking the cursor reticle across the canvas.',
     },
     {
       type: GestureType.PINCH,
-      title: 'Pick Color or Tool',
-      posture: 'Hover over top palette bar',
+      title: 'Pinch & Select',
+      posture: 'Thumb + Index fingertips touching',
       detail:
-        'Move your hand to the top palette bar and hold briefly (or pinch) over any color swatch to select it—never triggers mid-drawing.',
+        'Move cursor to the top dock and pinch or hold to select colors and instruments.',
     },
   ];
 
@@ -39,7 +45,7 @@ export const GestureGuide: React.FC<GestureGuideProps> = ({
           Gesture Vocabulary
         </span>
         <span className="text-[11px] text-[#718096] tabular-nums">
-          21-pt Hand Mesh
+          Spatial Computer Vision
         </span>
       </div>
 
@@ -47,8 +53,9 @@ export const GestureGuide: React.FC<GestureGuideProps> = ({
         {gestures.map((item) => {
           const isCurrent =
             activeGesture === item.type ||
-            (item.type === GestureType.PAUSE &&
-              activeGesture === GestureType.OPEN_PALM);
+            (item.type === GestureType.HOVER &&
+              (activeGesture === GestureType.OPEN_PALM ||
+                activeGesture === GestureType.PAUSE));
 
           return (
             <div
@@ -60,7 +67,11 @@ export const GestureGuide: React.FC<GestureGuideProps> = ({
               <div className="flex items-center justify-between gap-2">
                 <span
                   className={`text-xs font-semibold ${
-                    isCurrent ? 'text-[#D5B879]' : 'text-[#F0F2F6]'
+                    isCurrent
+                      ? item.type === GestureType.ERASE
+                        ? 'text-[#F87171]'
+                        : 'text-[#D5B879]'
+                      : 'text-[#F0F2F6]'
                   }`}
                 >
                   {item.title}

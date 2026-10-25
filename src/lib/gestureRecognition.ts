@@ -1,5 +1,6 @@
 import {
   GestureResult,
+  GestureState,
   GestureType,
   LandmarkIndex,
   NormalizedLandmark,
@@ -24,7 +25,8 @@ function isFingerExtended(
   mcpIdx: number,
   pipIdx: number,
   dipIdx: number,
-  tipIdx: number
+  tipIdx: number,
+  hysteresisFactor: number = 1.0
 ): boolean {
   const wrist = landmarks[LandmarkIndex.WRIST];
   const mcp = landmarks[mcpIdx];
@@ -41,9 +43,9 @@ function isFingerExtended(
   const mcpToPip = distance2D(mcp, pip);
 
   return (
-    wristToTip > wristToPip * 1.12 &&
-    wristToTip > wristToDip * 1.03 &&
-    mcpToTip > mcpToPip * 1.25
+    wristToTip > wristToPip * (1.10 * hysteresisFactor) &&
+    wristToTip > wristToDip * (1.02 * hysteresisFactor) &&
+    mcpToTip > mcpToPip * (1.20 * hysteresisFactor)
   );
 }
 
@@ -68,13 +70,16 @@ function isThumbExtended(landmarks: NormalizedLandmark[]): boolean {
 export function createEmptyGestureResult(): GestureResult {
   return {
     gesture: GestureType.NONE,
+    state: GestureState.IDLE,
     isDrawing: false,
+    isErasing: false,
     isPinching: false,
     pinchDistance: 1,
     indexTipMirrored: null,
     thumbTipMirrored: null,
     pinchMidpointMirrored: null,
     confidence: 0,
+    stabilityScore: 0,
     fingersExtended: {
       thumb: false,
       index: false,
@@ -86,34 +91,63 @@ export function createEmptyGestureResult(): GestureResult {
 }
 
 /**
- * Evaluates 21 MediaPipe hand landmarks to classify VESPER studio gestures:
- * - DRAW: Index finger raised/extended; Middle, Ring, and Pinky folded.
- *   Protected with hysteresis so hand angle changes mid-stroke do not falsely trigger pinch.
+ * Evaluates 21 MediaPipe hand landmarks to classify VESPER studio postures:
+ * - DRAW: Index finger raised; Middle, Ring, and Pinky folded.
+ * - ERASE: V-Sign / Peace posture (Index and Middle extended; Ring and Pinky folded).
  * - PINCH: Thumb tip (4) and Index tip (8) intentionally brought together.
- * - OPEN_PALM / PAUSE: Multiple fingers raised or fist closed (stops drawing cleanly).
+ * - OPEN_PALM: All 5 fingers extended (clean pause / hover).
+ * - CLUTCH: Fist / closed fingers (safe hand repositioning).
+ * - HOVER: Hand in frame, moving cursor without depositing ink.
  */
-export function recognizeHandGesture(
+export function classifyHandPosture(
   landmarks: NormalizedLandmark[] | null,
   confidence: number = 1,
-  pinchThreshold: number = 0.045,
-  wasDrawingPreviously: boolean = false
-): GestureResult {
+  pinchThreshold: number = 0.048,
+  wasDrawingPreviously: boolean = false,
+  enableGestureEraser: boolean = true
+): {
+  rawGesture: GestureType;
+  isPinching: boolean;
+  pinchDistance: number;
+  indexTipMirrored: { x: number; y: number } | null;
+  thumbTipMirrored: { x: number; y: number } | null;
+  pinchMidpointMirrored: { x: number; y: number } | null;
+  stabilityScore: number;
+  fingersExtended: {
+    thumb: boolean;
+    index: boolean;
+    middle: boolean;
+    ring: boolean;
+    pinky: boolean;
+  };
+} {
   if (!landmarks || landmarks.length < 21) {
-    return createEmptyGestureResult();
+    const empty = createEmptyGestureResult();
+    return {
+      rawGesture: empty.gesture,
+      isPinching: false,
+      pinchDistance: 1,
+      indexTipMirrored: null,
+      thumbTipMirrored: null,
+      pinchMidpointMirrored: null,
+      stabilityScore: 0,
+      fingersExtended: empty.fingersExtended,
+    };
   }
 
   const indexTip = landmarks[LandmarkIndex.INDEX_TIP];
   const thumbTip = landmarks[LandmarkIndex.THUMB_TIP];
-  const wrist = landmarks[LandmarkIndex.WRIST];
-  const indexPip = landmarks[LandmarkIndex.INDEX_PIP];
+  const indexExtendedHysteresis = wasDrawingPreviously ? 0.90 : 1.0;
 
   const indexExtended = isFingerExtended(
     landmarks,
     LandmarkIndex.INDEX_MCP,
     LandmarkIndex.INDEX_PIP,
     LandmarkIndex.INDEX_DIP,
-    LandmarkIndex.INDEX_TIP
+    LandmarkIndex.INDEX_TIP,
+    indexExtendedHysteresis
   );
+
   const middleExtended = isFingerExtended(
     landmarks,
     LandmarkIndex.MIDDLE_MCP,
@@ -121,6 +155,7 @@ export function recognizeHandGesture(
     LandmarkIndex.MIDDLE_DIP,
     LandmarkIndex.MIDDLE_TIP
   );
+
   const ringExtended = isFingerExtended(
     landmarks,
     LandmarkIndex.RING_MCP,
@@ -128,6 +163,7 @@ export function recognizeHandGesture(
     LandmarkIndex.RING_DIP,
     LandmarkIndex.RING_TIP
   );
+
   const pinkyExtended = isFingerExtended(
     landmarks,
     LandmarkIndex.PINKY_MCP,
@@ -135,16 +171,14 @@ export function recognizeHandGesture(
     LandmarkIndex.PINKY_DIP,
     LandmarkIndex.PINKY_TIP
   );
+
   const thumbExtended = isThumbExtended(landmarks);
 
-  // Use 3D-weighted distance so thumb passing behind index finger at an angle isn't a false pinch
+  // 3D-weighted pinch distance
   const pinchDistance = distance3DWeighted(thumbTip, indexTip);
-
-  // Require a tighter threshold if already actively drawing so mid-stroke hand rotation never interrupts drawing
   const effectivePinchThreshold = wasDrawingPreviously
     ? pinchThreshold * 0.65
     : pinchThreshold;
-
   const isPinching = pinchDistance < effectivePinchThreshold;
 
   const indexTipMirrored = mirrorAndNormalizeCoordinate(indexTip);
@@ -154,38 +188,48 @@ export function recognizeHandGesture(
     y: (indexTipMirrored.y + thumbTipMirrored.y) / 2,
   };
 
-  const indexStillUpHysteresis =
-    wasDrawingPreviously &&
-    distance2D(wrist, indexTip) > distance2D(wrist, indexPip) * 1.04;
+  let rawGesture: GestureType = GestureType.HOVER;
 
   const otherFingersFolded = !middleExtended && !ringExtended && !pinkyExtended;
+  const allFingersExtended =
+    indexExtended && middleExtended && ringExtended && pinkyExtended;
+  const allFingersFolded =
+    !indexExtended && !middleExtended && !ringExtended && !pinkyExtended;
 
-  let gesture: GestureType = GestureType.PAUSE;
-  let isDrawing = false;
-
-  if ((indexExtended || indexStillUpHysteresis) && otherFingersFolded && !isPinching) {
-    gesture = GestureType.DRAW;
-    isDrawing = true;
-  } else if (isPinching) {
-    gesture = GestureType.PINCH;
-    isDrawing = false;
-  } else if (indexExtended && middleExtended && ringExtended && pinkyExtended) {
-    gesture = GestureType.OPEN_PALM;
-    isDrawing = false;
+  if (isPinching) {
+    rawGesture = GestureType.PINCH;
+  } else if (
+    enableGestureEraser &&
+    indexExtended &&
+    middleExtended &&
+    !ringExtended &&
+    !pinkyExtended
+  ) {
+    // V-Sign / Peace sign is natural intuitive Eraser posture
+    rawGesture = GestureType.ERASE;
+  } else if (indexExtended && otherFingersFolded) {
+    rawGesture = GestureType.DRAW;
+  } else if (allFingersExtended) {
+    rawGesture = GestureType.OPEN_PALM;
+  } else if (allFingersFolded) {
+    rawGesture = GestureType.CLUTCH;
   } else {
-    gesture = GestureType.PAUSE;
-    isDrawing = false;
+    rawGesture = GestureType.HOVER;
   }
 
+  // Calculate hand landmark stability score
+  const wrist = landmarks[LandmarkIndex.WRIST];
+  const palmSpan = distance2D(wrist, indexTip);
+  const stabilityScore = Math.max(0.4, Math.min(1.0, confidence * (palmSpan > 0.15 ? 1 : 0.8)));
+
   return {
-    gesture,
-    isDrawing,
+    rawGesture,
     isPinching,
     pinchDistance,
     indexTipMirrored,
     thumbTipMirrored,
     pinchMidpointMirrored,
-    confidence,
+    stabilityScore,
     fingersExtended: {
       thumb: thumbExtended,
       index: indexExtended,

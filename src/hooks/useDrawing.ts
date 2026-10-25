@@ -1,7 +1,11 @@
 import { useCallback, useRef, useState } from 'react';
 import { DrawingEngine } from '../lib/drawingEngine';
 import {
+  BRUSH_PRESETS,
+  CANVAS_BACKGROUNDS,
+  CanvasBackground,
   DrawingSettings,
+  ExportSettings,
   ToolType,
   VESPER_PALETTE,
 } from '../types/drawing';
@@ -9,17 +13,19 @@ import {
 export function useDrawing() {
   const [settings, setSettings] = useState<DrawingSettings>({
     tool: ToolType.BRUSH,
-    color: VESPER_PALETTE[1].hex, // Midnight Blue (#0B1220) ink on warm Ivory (#F7F5F0) canvas
+    color: VESPER_PALETTE[1].hex, // Midnight Blue (#0B1220) default ink
     brushSize: 8,
-    eraserSize: 24,
+    eraserSize: 28,
     opacity: 1,
     smoothing: 0.55,
     pinchThreshold: 0.048,
     showLandmarks: true,
     enablePinchColorCycle: true,
+    enableGestureEraser: true,
+    activePresetId: 'studio-brush',
+    background: CANVAS_BACKGROUNDS[0], // Warm Ivory Paper
   });
 
-  // Let's initialize default drawing color to Midnight Blue (#0B1220) so drawing on Ivory (#F7F5F0) is immediately crisp and visible, or Champagne Gold (#D5B879)
   const [artworkTitle, setArtworkTitle] = useState<string>('Untitled Study 01');
   const [canUndo, setCanUndo] = useState<boolean>(false);
   const [canRedo, setCanRedo] = useState<boolean>(false);
@@ -37,29 +43,34 @@ export function useDrawing() {
   }
 
   const setTool = useCallback((tool: ToolType) => {
-    setSettings((prev) => ({ ...prev, tool }));
+    setSettings((prev) => ({
+      ...prev,
+      tool,
+      activePresetId: tool === ToolType.ERASER ? 'eraser' : prev.activePresetId,
+    }));
   }, []);
 
   const setColor = useCallback((color: string) => {
     setSettings((prev) => ({
       ...prev,
       color,
-      tool: ToolType.BRUSH, // Automatically switch to brush when picking a color
+      tool: ToolType.BRUSH,
     }));
   }, []);
 
-  const cycleNextColor = useCallback(() => {
-    setSettings((prev) => {
-      const idx = VESPER_PALETTE.findIndex(
-        (c) => c.hex.toLowerCase() === prev.color.toLowerCase()
-      );
-      const nextIdx = (idx + 1) % VESPER_PALETTE.length;
-      return {
-        ...prev,
-        color: VESPER_PALETTE[nextIdx].hex,
-        tool: ToolType.BRUSH,
-      };
-    });
+  const applyPreset = useCallback((presetId: string) => {
+    const preset = BRUSH_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+
+    setSettings((prev) => ({
+      ...prev,
+      activePresetId: preset.id,
+      tool: preset.tool,
+      brushSize: preset.tool === ToolType.BRUSH ? preset.size : prev.brushSize,
+      eraserSize: preset.tool === ToolType.ERASER ? preset.size : prev.eraserSize,
+      opacity: preset.opacity,
+      smoothing: preset.smoothing,
+    }));
   }, []);
 
   const setBrushSize = useCallback((size: number) => {
@@ -81,7 +92,7 @@ export function useDrawing() {
   const setSmoothing = useCallback((smoothing: number) => {
     setSettings((prev) => ({
       ...prev,
-      smoothing: Math.max(0, Math.min(0.95, smoothing)),
+      smoothing: Math.max(0.1, Math.min(0.95, smoothing)),
     }));
   }, []);
 
@@ -89,6 +100,13 @@ export function useDrawing() {
     setSettings((prev) => ({
       ...prev,
       pinchThreshold: Math.max(0.025, Math.min(0.085, pinchThreshold)),
+    }));
+  }, []);
+
+  const setBackground = useCallback((background: CanvasBackground) => {
+    setSettings((prev) => ({
+      ...prev,
+      background,
     }));
   }, []);
 
@@ -100,6 +118,13 @@ export function useDrawing() {
     setSettings((prev) => ({
       ...prev,
       enablePinchColorCycle: !prev.enablePinchColorCycle,
+    }));
+  }, []);
+
+  const toggleGestureEraser = useCallback(() => {
+    setSettings((prev) => ({
+      ...prev,
+      enableGestureEraser: !prev.enableGestureEraser,
     }));
   }, []);
 
@@ -115,9 +140,15 @@ export function useDrawing() {
     engineRef.current?.clear();
   }, []);
 
-  const exportArtwork = useCallback(() => {
-    return engineRef.current?.exportPNG(artworkTitle) ?? false;
-  }, [artworkTitle]);
+  const exportArtwork = useCallback(
+    (exportSettings: ExportSettings) => {
+      return (
+        engineRef.current?.exportPNG(exportSettings, settings.background) ??
+        false
+      );
+    },
+    [settings.background]
+  );
 
   const activeSize =
     settings.tool === ToolType.ERASER
@@ -135,13 +166,15 @@ export function useDrawing() {
     strokeCount,
     setTool,
     setColor,
-    cycleNextColor,
+    applyPreset,
     setBrushSize,
     setOpacity,
     setSmoothing,
     setPinchThreshold,
+    setBackground,
     toggleShowLandmarks,
     togglePinchColorCycle,
+    toggleGestureEraser,
     undo,
     redo,
     clearCanvas,

@@ -6,6 +6,7 @@ import {
 import { createEmptyGestureResult } from '../lib/gestureRecognition';
 import {
   CameraState,
+  GestureState,
   GestureType,
   HandTrackingFrame,
   TrackingModelState,
@@ -18,8 +19,11 @@ export interface TrackingStatusSummary {
   handCount: number;
   handedness: string | null;
   confidence: number;
+  stabilityScore: number;
   gesture: GestureType;
+  state: GestureState;
   isDrawing: boolean;
+  isErasing: boolean;
   isPinching: boolean;
 }
 
@@ -29,6 +33,7 @@ export interface UseHandTrackingOptions {
   cameraState: CameraState;
   pinchThreshold: number;
   showLandmarks: boolean;
+  enableGestureEraser?: boolean;
   onFrame?: (frame: HandTrackingFrame) => void;
   onPinchTrigger?: (midpoint: { x: number; y: number }) => void;
 }
@@ -39,6 +44,7 @@ export function useHandTracking({
   cameraState,
   pinchThreshold,
   showLandmarks,
+  enableGestureEraser = true,
   onFrame,
   onPinchTrigger,
 }: UseHandTrackingOptions) {
@@ -54,7 +60,6 @@ export function useHandTracking({
     timestamp: 0,
   });
 
-  // Refs for latest callback & settings to avoid recreating the RAF loop
   const onFrameRef = useRef(onFrame);
   onFrameRef.current = onFrame;
 
@@ -67,6 +72,9 @@ export function useHandTracking({
   const showLandmarksRef = useRef(showLandmarks);
   showLandmarksRef.current = showLandmarks;
 
+  const enableGestureEraserRef = useRef(enableGestureEraser);
+  enableGestureEraserRef.current = enableGestureEraser;
+
   const lastPinchTimeRef = useRef<number>(0);
   const wasPinchingRef = useRef<boolean>(false);
   const lastUiSyncRef = useRef<number>(0);
@@ -78,8 +86,11 @@ export function useHandTracking({
     handCount: 0,
     handedness: null,
     confidence: 0,
+    stabilityScore: 0,
     gesture: GestureType.NONE,
+    state: GestureState.IDLE,
     isDrawing: false,
+    isErasing: false,
     isPinching: false,
   });
 
@@ -116,7 +127,7 @@ export function useHandTracking({
         ...prev,
         modelState: TrackingModelState.ERROR,
         modelError:
-          'Failed to initialize MediaPipe Hand Landmarker model. Check your network connection or use mouse drawing.',
+          'Failed to initialize MediaPipe Hand Landmarker. Check network connection or draw with mouse.',
       }));
       return false;
     }
@@ -127,6 +138,8 @@ export function useHandTracking({
       cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
     }
+    controllerRef.current?.resetStateMachine();
+
     if (overlayCanvasRef.current) {
       const ctx = overlayCanvasRef.current.getContext('2d');
       ctx?.clearRect(
@@ -141,8 +154,11 @@ export function useHandTracking({
       hasHand: false,
       handCount: 0,
       confidence: 0,
+      stabilityScore: 0,
       gesture: GestureType.NONE,
+      state: GestureState.IDLE,
       isDrawing: false,
+      isErasing: false,
       isPinching: false,
     }));
   }, [overlayCanvasRef]);
@@ -160,8 +176,11 @@ export function useHandTracking({
       handCount: 0,
       handedness: null,
       confidence: 0,
+      stabilityScore: 0,
       gesture: GestureType.NONE,
+      state: GestureState.IDLE,
       isDrawing: false,
+      isErasing: false,
       isPinching: false,
     });
   }, [stopTrackingLoop]);
@@ -189,11 +208,12 @@ export function useHandTracking({
             const frame = controller.detectFrame(
               video,
               now,
-              pinchThresholdRef.current
+              pinchThresholdRef.current,
+              enableGestureEraserRef.current
             );
             latestFrameRef.current = frame;
 
-            // Render landmarks onto the camera preview overlay canvas
+            // Render skeleton onto webcam preview overlay canvas
             if (overlayCanvasRef.current) {
               drawHandLandmarksOverlay(
                 overlayCanvasRef.current,
@@ -203,10 +223,10 @@ export function useHandTracking({
               );
             }
 
-            // Detect discrete pinch onset with 650ms cooldown
+            // Detect discrete pinch trigger with cooldown
             if (frame.gestureResult.isPinching && !wasPinchingRef.current) {
               if (
-                now - lastPinchTimeRef.current > 650 &&
+                now - lastPinchTimeRef.current > 550 &&
                 frame.gestureResult.pinchMidpointMirrored
               ) {
                 lastPinchTimeRef.current = now;
@@ -220,16 +240,18 @@ export function useHandTracking({
             // Invoke high-frequency canvas drawing callback
             onFrameRef.current?.(frame);
 
-            // Throttle React UI state updates to ~140ms or immediate discrete state transition
+            // Throttle React UI updates to ~120ms or immediate on discrete gesture changes
             setStatus((prev) => {
               const discreteChanged =
                 prev.hasHand !== frame.hasHand ||
                 prev.handCount !== frame.handCount ||
                 prev.gesture !== frame.gestureResult.gesture ||
+                prev.state !== frame.gestureResult.state ||
                 prev.isDrawing !== frame.gestureResult.isDrawing ||
+                prev.isErasing !== frame.gestureResult.isErasing ||
                 prev.isPinching !== frame.gestureResult.isPinching;
 
-              if (!discreteChanged && now - lastUiSyncRef.current < 140) {
+              if (!discreteChanged && now - lastUiSyncRef.current < 120) {
                 return prev;
               }
 
@@ -240,8 +262,11 @@ export function useHandTracking({
                 handCount: frame.handCount,
                 handedness: frame.handedness,
                 confidence: frame.confidence,
+                stabilityScore: frame.gestureResult.stabilityScore,
                 gesture: frame.gestureResult.gesture,
+                state: frame.gestureResult.state,
                 isDrawing: frame.gestureResult.isDrawing,
+                isErasing: frame.gestureResult.isErasing,
                 isPinching: frame.gestureResult.isPinching,
               };
             });

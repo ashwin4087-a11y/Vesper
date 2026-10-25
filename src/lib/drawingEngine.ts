@@ -1,4 +1,4 @@
-import { Point, Stroke, ToolType } from '../types/drawing';
+import { CanvasBackground, ExportSettings, Point, Stroke, ToolType } from '../types/drawing';
 import { configureHighDPICanvas, exportCanvasToPng } from './canvasUtils';
 
 export interface EngineStateListener {
@@ -7,7 +7,8 @@ export interface EngineStateListener {
 
 /**
  * Independent HTML5 Canvas Drawing Engine for VESPER.
- * Decoupled from React render cycles for 60fps+ gesture and pointer drawing.
+ * Features 60fps+ decoupled execution, velocity-responsive caliber dynamics,
+ * quadratic spline smoothing, and high-DPI crisp export.
  */
 export class DrawingEngine {
   private canvas: HTMLCanvasElement | null = null;
@@ -51,7 +52,7 @@ export class DrawingEngine {
     const prevWidth = this.logicalWidth;
     const prevHeight = this.logicalHeight;
 
-    // Rescale existing stroke coordinates proportionally if the canvas already had valid dimensions
+    // Rescale existing stroke coordinates proportionally if aspect ratio shifts meaningfully
     if (
       prevWidth > 0 &&
       prevHeight > 0 &&
@@ -94,11 +95,11 @@ export class DrawingEngine {
   ): void {
     this.activeStroke = {
       id: `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      points: [point],
+      points: [{ ...point, velocity: 0 }],
       color: options.color,
       size: options.size,
       opacity: options.opacity ?? 1,
-      smoothing: options.smoothing ?? 0.5,
+      smoothing: options.smoothing ?? 0.55,
       tool: options.tool,
       timestamp: Date.now(),
     };
@@ -113,12 +114,20 @@ export class DrawingEngine {
     const lastPt = pts[pts.length - 1];
 
     if (lastPt) {
-      const dist = Math.hypot(point.x - lastPt.x, point.y - lastPt.y);
-      // Avoid duplicate sub-pixel points while preserving responsiveness
-      if (dist < 0.75) return;
+      const dx = point.x - lastPt.x;
+      const dy = point.y - lastPt.y;
+      const dist = Math.hypot(dx, dy);
+
+      // Filter sub-pixel jitter
+      if (dist < 0.6) return;
+
+      // Estimate velocity for dynamic calligraphic taper
+      const velocity = Math.min(1.4, dist / 16);
+      pts.push({ ...point, velocity });
+    } else {
+      pts.push({ ...point, velocity: 0 });
     }
 
-    pts.push(point);
     this.renderAll();
   }
 
@@ -198,9 +207,12 @@ export class DrawingEngine {
     return this.strokes.length;
   }
 
-  public exportPNG(artworkTitle: string = 'vesper-artwork'): boolean {
+  public exportPNG(
+    exportSettings: ExportSettings,
+    background: CanvasBackground
+  ): boolean {
     if (!this.canvas) return false;
-    return exportCanvasToPng(this.canvas, artworkTitle, '#F7F5F0');
+    return exportCanvasToPng(this.canvas, exportSettings, background);
   }
 
   public renderAll(): void {
@@ -228,20 +240,22 @@ export class DrawingEngine {
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = size;
 
     if (tool === ToolType.ERASER) {
       ctx.globalCompositeOperation = 'destination-out';
       ctx.strokeStyle = 'rgba(0,0,0,1)';
       ctx.fillStyle = 'rgba(0,0,0,1)';
       ctx.globalAlpha = 1;
+      ctx.lineWidth = size;
     } else {
       ctx.globalCompositeOperation = 'source-over';
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
       ctx.globalAlpha = opacity;
+      ctx.lineWidth = size;
     }
 
+    // Single touch/dot
     if (points.length === 1) {
       ctx.beginPath();
       ctx.arc(points[0].x, points[0].y, size / 2, 0, Math.PI * 2);
@@ -250,6 +264,7 @@ export class DrawingEngine {
       return;
     }
 
+    // 2-point line
     if (points.length === 2) {
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);

@@ -31,10 +31,25 @@ export interface NormalizedLandmark {
 
 export enum GestureType {
   NONE = 'NONE',
+  HOVER = 'HOVER',
   DRAW = 'DRAW',
-  PAUSE = 'PAUSE',
+  ERASE = 'ERASE',
   PINCH = 'PINCH',
   OPEN_PALM = 'OPEN_PALM',
+  CLUTCH = 'CLUTCH',
+  PAUSE = 'PAUSE', // Retained for backwards compatibility
+}
+
+export enum GestureState {
+  IDLE = 'IDLE',
+  HOVER = 'HOVER',
+  DRAW_PENDING = 'DRAW_PENDING',
+  DRAWING = 'DRAWING',
+  ERASE_PENDING = 'ERASE_PENDING',
+  ERASING = 'ERASING',
+  PINCH_PENDING = 'PINCH_PENDING',
+  PINCH_ACTIVE = 'PINCH_ACTIVE',
+  TRACKING_LOST_GRACE = 'TRACKING_LOST_GRACE',
 }
 
 export enum CameraState {
@@ -54,13 +69,16 @@ export enum TrackingModelState {
 
 export interface GestureResult {
   gesture: GestureType;
+  state: GestureState;
   isDrawing: boolean;
+  isErasing: boolean;
   isPinching: boolean;
   pinchDistance: number;
   indexTipMirrored: { x: number; y: number } | null;
   thumbTipMirrored: { x: number; y: number } | null;
   pinchMidpointMirrored: { x: number; y: number } | null;
   confidence: number;
+  stabilityScore: number;
   fingersExtended: {
     thumb: boolean;
     index: boolean;

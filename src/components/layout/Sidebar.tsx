@@ -1,6 +1,6 @@
 import React from 'react';
 import { TrackingStatusSummary } from '../../hooks/useHandTracking';
-import { DrawingSettings, ToolType } from '../../types/drawing';
+import { DrawingSettings } from '../../types/drawing';
 import { CameraState } from '../../types/hand';
 import { CameraPreview } from '../camera/CameraPreview';
 import { BrushSettings } from '../canvas/BrushSettings';
@@ -22,9 +22,11 @@ export interface SidebarProps {
   onToggleLandmarks: () => void;
   onRetryModel: () => void;
   onSelectColor: (hex: string) => void;
+  onApplyPreset: (presetId: string) => void;
   onChangeSize: (size: number) => void;
   onChangeOpacity: (opacity: number) => void;
   onChangeSmoothing: (smoothing: number) => void;
+  onToggleGestureEraser: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -42,22 +44,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleLandmarks,
   onRetryModel,
   onSelectColor,
+  onApplyPreset,
   onChangeSize,
   onChangeOpacity,
   onChangeSmoothing,
+  onToggleGestureEraser,
 }) => {
   return (
     <aside
-      aria-label="Studio Inspector & Camera Panel"
+      aria-label="Studio Inspector & Optical Feed"
       className={`bg-[#151E2D] border-l border-[#243247] transition-all duration-200 overflow-y-auto shrink-0 z-20 ${
         isOpen
           ? 'w-72 sm:w-80 p-4 space-y-6 block'
           : 'w-0 p-0 overflow-hidden border-l-0'
       }`}
     >
-      {/* Keep CameraPreview mounted so the <video> ref stays active even if sidebar is collapsed */}
+      {/* Mounted DOM structure preserves <video> and MediaStream during panel collapse */}
       <div className={isOpen ? 'space-y-6' : 'sr-only'}>
-        {/* 1. Webcam Preview & Tracking Status */}
+        {/* 1. Optical Hand Feed & Tracking Telemetry */}
         <section aria-label="Webcam & Hand Tracking">
           <CameraPreview
             videoRef={videoRef}
@@ -76,7 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="h-px bg-[#243247]" />
 
-        {/* 2. Curated VESPER Color Palette */}
+        {/* 2. Curated VESPER Pigments */}
         <section aria-label="Color Palette">
           <ColorPalette
             selectedColor={settings.color}
@@ -87,7 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="h-px bg-[#243247]" />
 
-        {/* 3. Brush & Eraser Settings */}
+        {/* 3. Brush & Eraser Instrument Dynamics */}
         <section aria-label="Brush Settings">
           <BrushSettings
             tool={settings.tool}
@@ -95,15 +99,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             size={activeSize}
             opacity={settings.opacity}
             smoothing={settings.smoothing}
+            activePresetId={settings.activePresetId}
+            enableGestureEraser={settings.enableGestureEraser}
+            onApplyPreset={onApplyPreset}
             onChangeSize={onChangeSize}
             onChangeOpacity={onChangeOpacity}
             onChangeSmoothing={onChangeSmoothing}
+            onToggleGestureEraser={onToggleGestureEraser}
           />
         </section>
 
         <div className="h-px bg-[#243247]" />
 
-        {/* 4. Compact Gesture Reference Guide */}
+        {/* 4. Compact Gesture Vocabulary Guide */}
         <section aria-label="Gesture Guide">
           <GestureGuide
             activeGesture={trackingStatus.gesture}

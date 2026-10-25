@@ -1,14 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Brush,
   Eraser,
   Minus,
+  Paintbrush,
   Plus,
   Redo2,
   Trash2,
   Undo2,
 } from 'lucide-react';
-import { ToolType } from '../../types/drawing';
+import { BRUSH_PRESETS, ToolType } from '../../types/drawing';
 import { Button } from '../ui/Button';
 import { Tooltip } from '../ui/Tooltip';
 
@@ -16,10 +17,12 @@ export interface CanvasToolbarProps {
   activeTool: ToolType;
   activeSize: number;
   activeColor: string;
+  activePresetId: string;
   canUndo: boolean;
   canRedo: boolean;
   strokeCount: number;
   onSelectTool: (tool: ToolType) => void;
+  onApplyPreset: (presetId: string) => void;
   onChangeSize: (size: number) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -30,23 +33,27 @@ export const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
   activeTool,
   activeSize,
   activeColor,
+  activePresetId,
   canUndo,
   canRedo,
   strokeCount,
   onSelectTool,
+  onApplyPreset,
   onChangeSize,
   onUndo,
   onRedo,
   onRequestClear,
 }) => {
+  const [presetsOpen, setPresetsOpen] = useState(false);
+
   return (
     <aside
       aria-label="Drawing Tools"
       className="w-14 sm:w-16 bg-[#151E2D] border-r border-[#243247] flex flex-col items-center justify-between py-4 px-2 select-none shrink-0 z-20"
     >
-      {/* Top Group: Brush & Eraser */}
-      <div className="flex flex-col items-center gap-2 w-full">
-        <Tooltip content="Brush Tool" shortcut="B" side="right">
+      {/* Top Group: Brush, Eraser, Presets */}
+      <div className="flex flex-col items-center gap-2 w-full relative">
+        <Tooltip content="Studio Brush" shortcut="B" side="right">
           <Button
             variant="tool"
             size="icon"
@@ -65,7 +72,7 @@ export const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
           </Button>
         </Tooltip>
 
-        <Tooltip content="Eraser Tool" shortcut="E" side="right">
+        <Tooltip content="Precision Eraser" shortcut="E" side="right">
           <Button
             variant="tool"
             size="icon"
@@ -84,10 +91,62 @@ export const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
           </Button>
         </Tooltip>
 
+        {/* Brush Dynamics Presets Popover Toggle */}
+        <Tooltip content="Instrument Presets" side="right">
+          <Button
+            variant="tool"
+            size="icon"
+            active={presetsOpen}
+            onClick={() => setPresetsOpen((prev) => !prev)}
+            aria-label="Brush Presets"
+          >
+            <Paintbrush className="w-4 h-4" />
+          </Button>
+        </Tooltip>
+
+        {/* Floating Presets Dropdown */}
+        {presetsOpen && (
+          <div className="absolute left-16 top-12 z-50 w-56 rounded-xl bg-[#151E2D] border border-[#243247] p-2 shadow-2xl space-y-1">
+            <div className="text-[10px] uppercase font-semibold text-[#718096] px-2 py-1">
+              Instrument Presets
+            </div>
+            {BRUSH_PRESETS.map((preset) => {
+              const isSelected = activePresetId === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => {
+                    onApplyPreset(preset.id);
+                    setPresetsOpen(false);
+                  }}
+                  className={`w-full text-left px-2.5 py-1.5 rounded-lg flex flex-col transition-colors cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#0B1220] border border-[#D5B879] text-[#F0F2F6]'
+                      : 'hover:bg-[#243247]/50 text-[#A4B0C1]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs font-medium">
+                    <span className={isSelected ? 'text-[#D5B879]' : ''}>
+                      {preset.name}
+                    </span>
+                    <span className="font-mono text-[10px] text-[#718096] tabular-nums">
+                      {preset.size}px
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-[#718096] truncate">
+                    {preset.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="w-8 h-px bg-[#243247] my-1.5" />
 
-        {/* Brush Size Stepper Controls */}
-        <Tooltip content="Increase Size" shortcut="]" side="right">
+        {/* Caliber Stepper Controls */}
+        <Tooltip content="Increase Caliber" shortcut="]" side="right">
           <Button
             variant="tool"
             size="icon"
@@ -104,12 +163,12 @@ export const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
         >
           <div className="w-7 h-7 rounded-md bg-[#0B1220] border border-[#243247] flex items-center justify-center">
             <span
-              className="rounded-full"
+              className="rounded-full transition-all duration-150"
               style={{
                 width: `${Math.max(3, Math.min(20, activeSize * 0.45))}px`,
                 height: `${Math.max(3, Math.min(20, activeSize * 0.45))}px`,
                 backgroundColor:
-                  activeTool === ToolType.ERASER ? '#F7F5F0' : activeColor,
+                  activeTool === ToolType.ERASER ? '#F87171' : activeColor,
                 border:
                   activeTool === ToolType.ERASER
                     ? '1.5px dashed #D5B879'
@@ -124,7 +183,7 @@ export const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
           </span>
         </div>
 
-        <Tooltip content="Decrease Size" shortcut="[" side="right">
+        <Tooltip content="Decrease Caliber" shortcut="[" side="right">
           <Button
             variant="tool"
             size="icon"

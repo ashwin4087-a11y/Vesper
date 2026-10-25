@@ -7,6 +7,7 @@ export interface Point {
   x: number;
   y: number;
   pressure?: number;
+  velocity?: number;
 }
 
 export interface Stroke {
@@ -38,7 +39,104 @@ export const VESPER_PALETTE: PaletteColor[] = [
   { id: 'violet', name: 'Violet', hex: '#6D28D9', shortcut: '8' },
 ];
 
-export const BRUSH_SIZE_PRESETS = [3, 6, 12, 24, 42];
+export const BRUSH_SIZE_PRESETS = [3, 6, 10, 18, 32, 48];
+
+export interface BrushPreset {
+  id: string;
+  name: string;
+  description: string;
+  size: number;
+  opacity: number;
+  smoothing: number;
+  tool: ToolType;
+}
+
+export const BRUSH_PRESETS: BrushPreset[] = [
+  {
+    id: 'studio-brush',
+    name: 'Studio Brush',
+    description: 'Balanced organic ink with subtle velocity taper',
+    size: 8,
+    opacity: 1,
+    smoothing: 0.55,
+    tool: ToolType.BRUSH,
+  },
+  {
+    id: 'fine-liner',
+    name: 'Fine Liner',
+    description: 'Crisp, high-precision technical contouring',
+    size: 3,
+    opacity: 1,
+    smoothing: 0.45,
+    tool: ToolType.BRUSH,
+  },
+  {
+    id: 'calligraphy',
+    name: 'Calligraphy',
+    description: 'Expressive stroke dynamic with broad caliber',
+    size: 16,
+    opacity: 0.95,
+    smoothing: 0.65,
+    tool: ToolType.BRUSH,
+  },
+  {
+    id: 'soft-graphite',
+    name: 'Soft Graphite',
+    description: 'Velvety translucent pigment for shading & washes',
+    size: 24,
+    opacity: 0.45,
+    smoothing: 0.7,
+    tool: ToolType.BRUSH,
+  },
+  {
+    id: 'eraser',
+    name: 'Precision Eraser',
+    description: 'Clean sub-pixel stroke subtractor',
+    size: 28,
+    opacity: 1,
+    smoothing: 0.4,
+    tool: ToolType.ERASER,
+  },
+];
+
+export interface CanvasBackground {
+  id: string;
+  name: string;
+  hex: string;
+  textColor: string;
+  grid: boolean;
+}
+
+export const CANVAS_BACKGROUNDS: CanvasBackground[] = [
+  {
+    id: 'warm-ivory',
+    name: 'Warm Ivory Paper',
+    hex: '#F7F5F0',
+    textColor: '#0B1220',
+    grid: false,
+  },
+  {
+    id: 'studio-grid',
+    name: 'Ivory Drafting Grid',
+    hex: '#F7F5F0',
+    textColor: '#0B1220',
+    grid: true,
+  },
+  {
+    id: 'pure-white',
+    name: 'Pure White Paper',
+    hex: '#FFFFFF',
+    textColor: '#0B1220',
+    grid: false,
+  },
+  {
+    id: 'obsidian-studio',
+    name: 'Obsidian Studio',
+    hex: '#0B1220',
+    textColor: '#F0F2F6',
+    grid: false,
+  },
+];
 
 export interface DrawingSettings {
   tool: ToolType;
@@ -50,4 +148,13 @@ export interface DrawingSettings {
   pinchThreshold: number;
   showLandmarks: boolean;
   enablePinchColorCycle: boolean;
+  enableGestureEraser: boolean;
+  activePresetId: string;
+  background: CanvasBackground;
+}
+
+export interface ExportSettings {
+  title: string;
+  transparentBackground: boolean;
+  scale: 1 | 2;
 }
